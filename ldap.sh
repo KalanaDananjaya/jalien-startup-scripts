@@ -1,5 +1,9 @@
 #!/bin/bash
 
+hostname="voboxalice8.cern.ch"
+ldap_hostname="alice-ldap.cern.ch"
+ldap_port="8389"
+
 function template(){
   src_file=$1
   dest_file=$2
@@ -56,7 +60,7 @@ function setup() {
 
 ldap_hostname="alice-ldap.cern.ch"
 ldap_port="8389"
-ldap=$(ldapsearch -x -h $ldap_hostname -p $ldap_port -b "host=voboxalice8.cern.ch,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
+ldap=$(ldapsearch -x -h $ldap_hostname -p $ldap_port -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
 
 
 #if [ -z $ldap];
