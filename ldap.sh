@@ -163,15 +163,6 @@ function setup() {
         fi
         add+=("export LCG_SITE=$lcg_state");
 
-         echo ">>> ***********Removing lines"
-      for ((i = 0; i < ${#rmv[@]}; i++))
-        do
-          # Find exact word matches and delete the line
-          echo "--- ${rmv[$i]}"
-          //sed -i "/${rmv[$i]}\b/d" $dest_file
-      done
-      echo ""
-
         template "$mlHome/site_env" "$farmHome/site_env"
         
         # ===================================================================================
@@ -180,11 +171,13 @@ function setup() {
         add=();
         rmv=();
         unset $changes
+        declare -Ag changes
         
-        addModules=$base_config[MONALISA_ADDMODULES_LIST] || []
-        rmvModules=$base_config[MONALISA_REMOVEMODULES_LIST || []
-        add+=($addModules);
-        rmv+=($rmvModules);
+        # addModules= || []
+        # rmvModules= || []
+
+        add+=(${base_config[MONALISA_ADDMODULES_LIST]});
+        rmv+=(${base_config[MONALISA_REMOVEMODULES_LIST]});
       
         if (( "$lcgSite" == 1 ));
         then
@@ -203,8 +196,7 @@ function setup() {
         add+=('*ContainerSupport{monStatusCmd, localhost, "/cvmfs/alice.cern.ch/containers/bin/status.sh"}%300');
         
         changes["^>localhost"]=">$fqdn"
-        
-        template "$mlHome/AliEn/myFarm.conf" "$farmHome/myFarm.conf"
+        template "$mlHome/myFarm.conf" "$farmHome/myFarm.conf"
     fi
 
 }
