@@ -25,49 +25,69 @@ ldap_port="8389"
 #       }
 # }
 
+
+#Check if the current key exist in the array and if not push a default value
+function pushIfNoKey(){
+  keyVal=$1
+  key=$(echo $keyVal| cut -d "=" -f 1 | xargs )
+  present=false
+
+  for currentKey in "${!add[@]}"
+  do
+    # if [[  "$currentKey" == "$key" ]]; then
+    if [[  "$currentKey" =~ /^$key\s*=\s*(.*)$/ ]]; then
+      $present=true
+    fi
+  done
+
+  if [[ "$present" == false ]]; then
+    add+=($keyVal)
+  fi
+}
+
 function template(){
   
-  src_file=$1
-  dest_file=$2
+  srcFile=$1
+  destFile=$2
 
   echo "=========== Templating the File ==========="
-  echo "+ Source File: $src_file"
-  echo "+ Destination File: $dest_file"
+  echo "+ Source File: $srcFile"
+  echo "+ Destination File: $destFile"
   echo ""
 
   # Create backup of the original file if it exists
-  [ -f $dest_file ] && cp -f $dest_file "$dest_file.orig"
-  cp $src_file $dest_file
+  [ -f $destFile ] && cp -f $destFile "$destFile.orig"
+  cp $srcFile $destFile
 
   # Apply lines changes
   echo ">>> Applying Changes"
-  for key in "${!changes[@]}"; do
+  for key in "${!changes[@]}"
+  do
     # Find partial matches and replace
       echo "Change key: $key to value: ${changes[$key]}"
-      sed -i "s|$key|${changes[$key]}|" $dest_file
+      sed -i "s|$key|${changes[$key]}|" $destFile
   done
   echo ""
   
   # Append new Lines
   echo ">>> Adding new lines"
-  for ((i = 0; i < ${#add[@]}; i++))
-    do
-      echo "+++ ${add[$i]}"
-      echo "${add[$i]}" >> $dest_file
+  for i in "${add[@]}"
+  do
+    echo "+++ $i"
+    echo "$i" >> $destFile
   done
   echo ""
 
   # Remove existing lines
   echo ">>> Removing existing lines"
-  for ((i = 0; i < ${#rmv[@]}; i++))
-    do
-      # Find exact word matches and delete the line
-      echo "--- ${rmv[$i]}"
-      sed -i "/${rmv[$i]}\b/d" $dest_file
+  for i in "${rmv[@]}"
+  do
+    # Find exact word matches and delete the line
+    echo "--- $i"
+    sed -i "/$i\b/d" $destFile
   done
   echo ""
 
-  # echo "$dest_file"
   echo " --- Templating Complete ---"
   echo ""
   
@@ -91,11 +111,9 @@ function setup() {
       if [[ ! $farmName = LCG* ]];
       then
           $farmName=$siteName.$1;
-          lcgSite = 1;
+          lcgSite=1;
       fi
 
-    
-    
     if [ -z "$ALIEN_ROOT" ]
       then
         echo "Please setup the environment variable ALIEN_ROOT before running the script"
@@ -105,7 +123,7 @@ function setup() {
         javaHome="$ALIEN_ROOT/java/MonaLisa/java"
 
         # ===================================================================================
-        # ml_env config generation
+        # ml_env config 
 
         shouldUpdate="${monalisa_config[SHOULD_UPDATE]:-"true"}"  
         javaOpts="${monalisa_config[JAVAOPTS]:-"-Xms256m -Xmx256m"}"
@@ -125,7 +143,7 @@ function setup() {
         template "$mlHome/ml_env" "$farmHome/ml_env"
 
         # ===================================================================================
-        # site_env config generation
+        # site_env config 
 
         add=();
         rmv=();
@@ -166,15 +184,12 @@ function setup() {
         template "$mlHome/site_env" "$farmHome/site_env"
         
         # ===================================================================================
-        # myFarm.conf generation
+        # myFarm.conf 
 
         add=();
         rmv=();
         unset $changes
         declare -Ag changes
-        
-        # addModules= || []
-        # rmvModules= || []
 
         add+=(${base_config[MONALISA_ADDMODULES_LIST]});
         rmv+=(${base_config[MONALISA_REMOVEMODULES_LIST]});
@@ -197,7 +212,115 @@ function setup() {
         
         changes["^>localhost"]=">$fqdn"
         template "$mlHome/myFarm.conf" "$farmHome/myFarm.conf"
+
+        # ===================================================================================
+        # ml.properties
+
+        add=();
+        rmv=();
+        unset $changes
+        declare -Ag changes
+
+        group=${monalisa_config[MONALISA_GROUP]} || "alice"
+        lus=${monalisa_config[MONALISA_LUS]} || "monalisa.cacr.caltech.edu,monalisa.cern.ch"
+        location=${monalisa_config[MONALISA_LOCATION]} || ${monalisa_config[SITE_LOCATION]} || ""
+        country=${monalisa_config[MONALISA_COUNTRY]} || ${monalisa_config[SITE_COUNTRY]} || ""
+        long=${monalisa_config[MONALISA_LONGITUDE]} || ${monalisa_config[SITE_LONGITUDE]} || "N/A"
+        lat=${monalisa_config[MONALISA_LATITUDE]} || ${monalisa_config[SITE_LATITUDE]} || "N/A"
+        admin=${monalisa_config[MONALISA_ADMINISTRATOR_LIST]} || ${monalisa_config[SITE_ADMINISTRATOR_LIST]}
+
+        # ITERATE ADMIN : TODO
+        storeType=${monalisa_config[MONALISA_STORETYPE]} || "mem"
+
+        add+=(${monalisa_config[MONALISA_ADDPROPERTIES_LIST]})
+
+        # logging properties
+        pushIfNoKey "lia.Monitor.Farm.Conf.ConfVerifier.level=WARNING"
+        #   pushIfNoKey "lia.Monitor.Filters.AliEnFilter.level=FINEST"
+
+        # monXDRUDP properties
+        pushIfNoKey "lia.Monitor.modules.GenericUDPListener.SO_RCVBUF_SIZE=2097152"
+        pushIfNoKey "lia.Monitor.modules.monXDRUDP.MONITOR_SENDERS=true"
+        pushIfNoKey "lia.Monitor.modules.monXDRUDP.SENDER_EXPIRE_TIME=600"
+
+        # AliEnFilter properties
+        pushIfNoKey "lia.Monitor.Store.FileLogger.maxDays=0"
+        pushIfNoKey "lia.Monitor.Filters.AliEnFilter=true"
+        pushIfNoKey "lia.Monitor.Filters.AliEnFilter.SLEEP_TIME=120"
+        pushIfNoKey "lia.Monitor.Filters.AliEnFilter.PARAM_EXPIRE=900"
+        pushIfNoKey "lia.Monitor.Filters.AliEnFilter.ZOMBIE_EXPIRE=14400"
+        pushIfNoKey "lia.Monitor.Filters.AliEnFilter.LDAP_QUERY_INTERVAL=7200"
+        pushIfNoKey "lia.Monitor.Filters.AliEnFilter.RUN_JOB_SYNC_SCRIPT=false"
+        pushIfNoKey "lia.Monitor.Filters.AliEnFilter.JOB_SYNC_RUN_INTERVAL=7200"
+        pushIfNoKey "lia.Monitor.Filters.AliEnFilter.JOB_SYNC_SCRIPT_TIMEOUT=1200"
+
+
+        rmv+=(${monalisa_config[MONALISA_REMOVEPROPERTIES_LIST]})
+
+        # changes["^MonaLisa.ContactName.*"]="MonaLisa.ContactName=".join(",", @contact) #TODO
+        # changes["^MonaLisa.ContactEmail.*"]="MonaLisa.ContactEmail=".join(",", @email) #TODO
+        changes["^MonaLisa.Location.*"]="MonaLisa.Location=$location"
+        changes["^MonaLisa.Country.*"]="MonaLisa.Country=$country"
+        changes["^MonaLisa.LAT.*"]="MonaLisa.LAT=$lat"
+        changes["^MonaLisa.LONG.*"]="MonaLisa.LONG=$long"
+        changes["^lia.Monitor.LUSs.*"]="lia.Monitor.LUSs=$lus"
+        changes["^lia.Monitor.group.*"]="lia.Monitor.group=$group"
+
+        if [[ $storeType =~ ^mem* ]]
+        then
+          changes["^lia.Monitor.Store.TransparentStoreFast.web_writes.*"]="lia.Monitor.Store.TransparentStoreFast.web_writes=0";
+          changes["^lia.Monitor.use_emysqldb.*"]="lia.Monitor.use_emysqldb=false"
+          changes["^lia.Monitor.use_epgsqldb.*"]="lia.Monitor.use_epgsqldb=false"
+          add+=("lia.Monitor.memory_store_only=true")
+          rmv+=("lia.Monitor.jdbcDriverString\\s*=\\s*com.mckoi.JDBCDriver")
+          rmv+=("lia.Monitor.jdbcDriverString\\s*=\\s*com.mysql.jdbc.Driver")
+        elif [[ $storeType =~ ^mysql ]]
+        then
+          changes["^lia.Monitor.Store.TransparentStoreFast.web_writes.*"]="lia.Monitor.Store.TransparentStoreFast.web_writes=3"
+          changes["^#?\\s*lia.Monitor.use_emysqldb.*"]="lia.Monitor.use_emysqldb=true"
+          changes["^lia.Monitor.use_epgsqldb.*"]="lia.Monitor.use_epgsqldb=false"
+          rmv+=("lia.Monitor.memory_store_only\\s*=\\s*true")
+          rmv+=("lia.Monitor.jdbcDriverString\\s*=\\s*com.mckoi.JDBCDriver")
+          rmv+=("lia.Monitor.jdbcDriverString\\s*=\\s*com.mysql.jdbc.Driver")
+        elif [[ $storeType =~ ^pgsql ]]
+        then
+          changes["^lia.Monitor.Store.TransparentStoreFast.web_writes.*"]="lia.Monitor.Store.TransparentStoreFast.web_writes=3"
+          changes["^#?\\s*lia.Monitor.use_epgsqldb.*"]="lia.Monitor.use_epgsqldb=true"
+          changes["^lia.Monitor.use_emysqldb.*"]="lia.Monitor.use_emysqldb=false"
+          rmv+=("lia.Monitor.memory_store_only\\s*=\\s*true")
+          rmv+=("lia.Monitor.jdbcDriverString\\s*=\\s*com.mckoi.JDBCDriver")
+          rmv+=("lia.Monitor.jdbcDriverString\\s*=\\s*com.mysql.jdbc.Driver")
+        fi
+
+        template "$mlHome/AliEn/ml.properties" "$farmHome/ml.properties"
+
+        
+
+        # from the @$add list, check if the user has changed the $logDir, i.e. the java.util.logging.FileHandler.pattern property
+        present=false
+        key="java.util.logging.FileHandler.pattern"
+        for currentKey in "${!add[@]}"
+        do
+        
+          if [[  "$currentKey" =~ /^$key\s*=\s*(.*)$/ ]]; then
+            $present=true
+            logFile=
+          fi
+        done
+        logFile = getValueForKey($add, );
+    $logDir = $1 if (defined($logFile) && $logFile =~ /(.*)\/ML\%g.log/);
+
+        # ===================================================================================
+        # db.conf.embedded 
+
+        add=();
+        rmv=();
+        unset $changes
+
+        template "$mlHome/db.conf.embedded" "$farmHome/db.conf.embedded"
     fi
+
+    
 
 }
 
