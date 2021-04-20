@@ -101,14 +101,20 @@ function setup() {
     template "$farmHome/Service/myFarm/ml.properties" "$logDir/MonaLisa/myFarm/ml.properties"
 
     # ============================= Export JAVA OPTS =======================================
-    export "JAVAOPTS=${monalisaConfiguration[JAVAOPTS]}"
+    export JAVAOPTS=${monalisaConfiguration[JAVAOPTS]}
 
     # ===================================================================================
 }
 
 
-# wget http://alimonitor.cern.ch/download/MonaLisa/MonaLisa-<version>.tar.gz` 
-# unpack
+mlVersion=v21.04.20
+mlPackName="MonaLisa.$mlVersion.tar.gz"
+# wget "http://alimonitor.cern.ch/download/MonaLisa/$mlPackName" 
+tar -xf "./$mlPackName" "MonaLisa.$mlVersion"
+farmHome="/home/kalana/MonaLisa"
+(cd "./MonaLisa.$mlVersion" ; echo $farmHome | "./install.sh")
+#echo $farmHome | ./"MonaLisa.$mlVersion/install.sh"
+# install
 
 siteLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
 
@@ -161,6 +167,6 @@ echo "===================== MonAlisa Config ==================="
 for x in "${!monalisaConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaConfiguration[$x]}" ; done
 echo ""
 
-farmHome="/home/kalana/MonaLisa" # MonAlisa package extracted location
+ # MonAlisa package extracted location
 logDir=${siteConfiguration[LOGDIR]}   #   should be added at deployment
 setup $farmHome $logDir
