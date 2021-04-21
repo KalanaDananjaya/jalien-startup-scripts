@@ -70,6 +70,10 @@ function setup() {
     declare -Ag changes
 
     add+=(${siteConfiguration[MONALISA_ADDMODULES_LIST]}); #TODO : find a site with "addModules” key and test
+    add+=("^monLogTail{Cluster=AliEnServicesLogs,Node=CE,command=tail -n 15 -F $logDir/CE/alien.log 2>&1}%3")
+    add+=("*AliEnServicesStatus{monStatusCmd, localhost, \"jalien-vobox CE mlstatus,timeout=800\"}%900
+")
+
 
     cp -r "$farmHome/Service/myFarm/" "$logDir/MonaLisa/myFarm/"
     template "$farmHome/Service/myFarm/myFarm.conf" "$logDir/MonaLisa/myFarm/myFarm.conf"
@@ -107,66 +111,85 @@ function setup() {
 }
 
 
-mlVersion=v21.04.20
-mlPackName="MonaLisa.$mlVersion.tar.gz"
+# mlVersion=v21.04.20
+# mlPackName="MonaLisa.$mlVersion.tar.gz"
 # wget "http://alimonitor.cern.ch/download/MonaLisa/$mlPackName" 
-tar -xf "./$mlPackName" "MonaLisa.$mlVersion"
-farmHome="/home/kalana/MonaLisa"
-(cd "./MonaLisa.$mlVersion" ; echo $farmHome | "./install.sh")
+# tar -xf "./$mlPackName" "MonaLisa.$mlVersion"
+
+# (cd "./MonaLisa.$mlVersion" ; echo $farmHome | "./install.sh")
 #echo $farmHome | ./"MonaLisa.$mlVersion/install.sh"
 # install
 
-siteLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
-
-declare -A siteConfiguration
-#TODO: There are 2 objectClass keys
-while IFS= read -r line; do
-#Ignore empty,commented and unwanted lines and create an associative array from ldap
-if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
-    then
-    key=$(echo $line| cut -d ":" -f 1 | xargs )
-    val=$(echo $line | cut -d ":" -f 2- | xargs)
-    val=$(envsubst <<< $val)
-    siteConfiguration[${key^^}]=$val
-fi
-done <<< "$siteLDAPQuery"
 
 
-siteName=${siteConfiguration[MONALISA]}
-monalisaLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "name=$siteName,ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
+farmHome="/home/kalana/MonaLisa" # MonAlisa package extracted location
+if [[ $1 == "start" ]]
+then
 
-declare -A monalisaConfiguration
-monalisaProperties=()
-#TODO: There are 2 objectClass keys, can dn breaks at wrong point
-while IFS= read -r line; do
-#Ignore empty, commented and unwanted lines and create an associative array from ldap
-if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
-    then
-    # Create a new array for addProperties
-    if [[ $line = addProperties* ]];
-    then
+    siteLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
+
+    declare -A siteConfiguration
+    #TODO: There are 2 objectClass keys
+    while IFS= read -r line; do
+    #Ignore empty,commented and unwanted lines and create an associative array from ldap
+    if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
+        then
+        key=$(echo $line| cut -d ":" -f 1 | xargs )
         val=$(echo $line | cut -d ":" -f 2- | xargs)
-        monalisaProperties+=($val)
-    else
-        key=$(echo $line | cut -d ":" -f 1 | xargs)
-        val=$(echo $line | cut -d ":" -f 2- | xargs)
-        monalisaConfiguration[${key^^}]=$val
+        val=$(envsubst <<< $val)
+        siteConfiguration[${key^^}]=$val
     fi
+    done <<< "$siteLDAPQuery"
+
+
+    siteName=${siteConfiguration[MONALISA]}
+    monalisaLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "name=$siteName,ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
+
+    declare -A monalisaConfiguration
+    monalisaProperties=()
+    #TODO: There are 2 objectClass keys, can dn breaks at wrong point
+    while IFS= read -r line; do
+    #Ignore empty, commented and unwanted lines and create an associative array from ldap
+    if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
+        then
+        # Create a new array for addProperties
+        if [[ $line = addProperties* ]];
+        then
+            val=$(echo $line | cut -d ":" -f 2- | xargs)
+            monalisaProperties+=($val)
+        else
+            key=$(echo $line | cut -d ":" -f 1 | xargs)
+            val=$(echo $line | cut -d ":" -f 2- | xargs)
+            monalisaConfiguration[${key^^}]=$val
+        fi
+    fi
+    done <<< "$monalisaLDAPQuery"
+
+    echo "===================== Base Config ==================="
+    for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" ; done
+    echo ""
+
+    echo "===================== MonAlisa Properties ==================="
+    for x in "${monalisaProperties[@]}"; do printf  "$x\n"  ; done
+    echo ""
+
+    echo "===================== MonAlisa Config ==================="
+    for x in "${!monalisaConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaConfiguration[$x]}" ; done
+    echo ""
+
+    logDir=${siteConfiguration[LOGDIR]}   #   should be added at deployment
+    setup $farmHome $logDir
+    $farmHome/Service/CMD/ML_SER start &> "$logDir/ML.log"
+
+elif [[ $1 == "stop" ]]
+then
+    echo "Stopping..."
+    # for c in $(ps -o pid= --ppid $$); do
+    for pid in $(ps -aux | grep -i mona | awk '{print $2}')
+    do
+        # request children shutdown
+        kill -0 ${pid} 2>/dev/null && kill -TERM ${pid} && list="$list $pid" || true
+    done
 fi
-done <<< "$monalisaLDAPQuery"
 
-echo "===================== Base Config ==================="
-for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" ; done
-echo ""
 
-echo "===================== MonAlisa Properties ==================="
-for x in "${monalisaProperties[@]}"; do printf  "$x\n"  ; done
-echo ""
-
-echo "===================== MonAlisa Config ==================="
-for x in "${!monalisaConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaConfiguration[$x]}" ; done
-echo ""
-
- # MonAlisa package extracted location
-logDir=${siteConfiguration[LOGDIR]}   #   should be added at deployment
-setup $farmHome $logDir
