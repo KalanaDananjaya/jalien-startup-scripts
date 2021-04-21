@@ -4,10 +4,6 @@
 # v0.1
 # kwijethu@cern.ch
 
-hostname="voboxalice8.cern.ch"
-ldapHostname="alice-ldap.cern.ch"
-ldapPort="8389"
-
 
 function template(){
   
@@ -121,7 +117,9 @@ function setup() {
 # install
 
 
-
+hostname="voboxalice8.cern.ch"
+ldapHostname="alice-ldap.cern.ch"
+ldapPort="8389"
 farmHome="/home/kalana/MonaLisa" # MonAlisa package extracted location
 if [[ $1 == "start" ]]
 then
@@ -179,6 +177,7 @@ then
 
     logDir=${siteConfiguration[LOGDIR]}   #   should be added at deployment
     setup $farmHome $logDir
+    echo "Starting MonALisa.... Please check $logDir/ML.log for logs"
     $farmHome/Service/CMD/ML_SER start &> "$logDir/ML.log"
 
 elif [[ $1 == "stop" ]]
