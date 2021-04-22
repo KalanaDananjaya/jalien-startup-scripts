@@ -5,18 +5,16 @@
 # export JALIEN_PATH= #e.g ~/jalien (remove if running from CVMfS)
 
 
-
 function run_ce() {
     command=$1
-    logDir=${ALICE_LOGDIR} || "~/ALICE/alien-logs"
-    jalienPath=$2 || "~/.jalien"
-
-    cd $logDir
-
+    logDir=${ALICE_LOGDIR-"${HOME}/ALICE/alien-logs"}
+    jalienPath=${2-"${HOME}/.jalien"}
+    
     if [[ $command = "start" ]]
     then
         echo "Starting JAliEn CE"
-        nohup $jalienPath/jalien ComputingElement & echo $! > CE.pid
+        nohup "$jalienPath/jalien" ComputingElement > "$logDir/CE.log" 2>"$logDir/CE.err" & 
+        echo $! > "$logDir/CE.pid" 
     elif [[ $command = "stop" ]]
     then
         echo "Stopping JAliEn CE"
