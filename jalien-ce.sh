@@ -6,7 +6,7 @@
 
 
 
-function run_ce{
+function run_ce() {
     command=$1
     logDir=${ALICE_LOGDIR} || "~/ALICE/alien-logs"
     jalienPath=$2 || "~/.jalien"

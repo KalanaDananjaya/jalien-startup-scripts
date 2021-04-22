@@ -106,7 +106,7 @@ function setup() {
 }
 
 
-function run_monalisa{
+function run_monalisa() {
 
     if [[ $1 == "start" ]]
     then
@@ -179,7 +179,7 @@ function run_monalisa{
         echo "Stopping MonAlisa..."
         for pid in $(ps -aux | grep -i mona | awk '{print $2}')
         do
-            # request children shutdown
+            # request children to shutdown
             kill -0 ${pid} 2>/dev/null 
         done
     fi
