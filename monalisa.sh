@@ -57,6 +57,9 @@ function setup() {
     farmHome=$1;
     logDir=$2
 
+    # Copy base templates to the local directory
+    cp -r "$farmHome/Service/myFarm/" "$logDir/MonaLisa/myFarm/"
+   
     # ===================================================================================
     # myFarm.conf 
 
@@ -67,13 +70,11 @@ function setup() {
 
     add+=(${siteConfiguration[MONALISA_ADDMODULES_LIST]}); #TODO : find a site with "addModules” key and test
     add+=("^monLogTail{Cluster=AliEnServicesLogs,Node=CE,command=tail -n 15 -F $logDir/CE/alien.log 2>&1}%3")
-    add+=("*AliEnServicesStatus{monStatusCmd, localhost, \"jalien-vobox CE mlstatus,timeout=800\"}%900")
+    add+=("*AliEnServicesStatus{monStatusCmd, localhost, \"logDir=$logDir `dirname $0`/jalien-vobox CE mlstatus,timeout=800\"}%900")
 
-
-    cp -r "$farmHome/Service/myFarm/" "$logDir/MonaLisa/myFarm/"
     template "$farmHome/Service/myFarm/myFarm.conf" "$logDir/MonaLisa/myFarm/myFarm.conf"
 
-    # ===================================================================================
+    # ========================================================================================
     # ml.properties
 
     add=();
@@ -87,10 +88,10 @@ function setup() {
     done
 
 
-    location=${monalisaConfiguration[LOCATION]} || ${monalisaConfiguration[SITE_LOCATION]} || ""
-    country=${monalisaConfiguration[COUNTRY]} || ${monalisaConfiguration[SITE_COUNTRY]} || ""
-    long=${monalisaConfiguration[LONGITUDE]} || ${monalisaConfiguration[SITE_LONGITUDE]} || "N/A"
-    lat=${monalisaConfiguration[LATITUDE]} || ${monalisaConfiguration[SITE_LATITUDE]} || "N/A"
+    location=${monalisaConfiguration[LOCATION]-monalisaConfiguration[SITE_LOCATION]} || ""
+    country=${monalisaConfiguration[COUNTRY]-monalisaConfiguration[SITE_COUNTRY]} || ""
+    long=${monalisaConfiguration[LONGITUDE]-monalisaConfiguration[SITE_LONGITUDE]} || "N/A"
+    lat=${monalisaConfiguration[LATITUDE]-monalisaConfiguration[SITE_LATITUDE]} || "N/A"
 
     changes["^MonaLisa.Location.*"]="MonaLisa.Location=$location"
     changes["^MonaLisa.Country.*"]="MonaLisa.Country=$country"
@@ -98,6 +99,18 @@ function setup() {
     changes["^MonaLisa.LONG.*"]="MonaLisa.LONG=$long"
 
     template "$farmHome/Service/myFarm/ml.properties" "$logDir/MonaLisa/myFarm/ml.properties"
+
+    # ===================================================================================
+    # ml.env
+
+    add=();
+    rmv=();
+    unset $changes
+    declare -Ag changes
+
+    changes["^FARM_NAME*"]="FARM_NAME=${monalisaConfiguration[NAME]}"
+    changes["^#FARM_HOME*"]="FARM_HOME=$logDir/MonaLisa/myFarm"
+    changes["^MONALISA_USER*"]="MONALISA_USER=${USER}"
 
     # ============================= Export JAVA OPTS =======================================
     export ALICE_LOGDIR=$logDir
@@ -115,10 +128,10 @@ function run_monalisa() {
         hostname=$4
         farmHome=$5
 
+        # Obtain site related configurations from LDAP
         siteLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
 
         declare -A siteConfiguration
-        #TODO: There are 2 objectClass keys
         while IFS= read -r line; do
         #Ignore empty,commented and unwanted lines and create an associative array from ldap
         if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
@@ -133,11 +146,11 @@ function run_monalisa() {
 
         siteName=${siteConfiguration[MONALISA]}
 
+        # Obtain MonAlisa service related configurations from LDAP
         monalisaLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "name=$siteName,ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
 
         declare -A monalisaConfiguration
         monalisaProperties=()
-        #TODO: There are 2 objectClass keys, can dn breaks at wrong point
         while IFS= read -r line; do
         #Ignore empty, commented and unwanted lines and create an associative array from ldap
         if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
@@ -169,8 +182,11 @@ function run_monalisa() {
 
         logDir=${siteConfiguration[LOGDIR]}   
 
+        mkdir -p $logDir/MonaLisa || echo "Please set VoBox log directory in the LDAP and try again.." && exit 1
+        
         setup $farmHome $logDir
 
+        export CONFDIR="$logDir/MonaLisa/myFarm"
         echo "Starting MonALisa.... Please check $logDir/ML.log for logs"
         nohup $farmHome/Service/CMD/ML_SER start &> "$logDir/ML.log"
 

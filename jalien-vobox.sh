@@ -7,11 +7,13 @@
 
 ldapHostname="alice-ldap.cern.ch"
 ldapPort="8389"
-hostname="voboxalice8.cern.ch"
-farmHome="/home/kalana/MonaLisa" # MonAlisa package extracted location
+hostname="voboxalice8.cern.ch" #TODO: Change to `hostname -f`
+farmHome="/home/kalana/MonaLisa" # MonAlisa package extracted location | TODO: Point to CVMFS location
 
 source ./jalien-ce.sh
 source ./monalisa.sh
+
+set -e
 
 if [[ $1 = "monalisa" ]]
     then

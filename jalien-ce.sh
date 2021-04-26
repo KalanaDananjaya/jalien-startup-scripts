@@ -1,9 +1,10 @@
 #!/bin/bash
 
-# export X509_USER_PROXY=
-# export ALICE_LOGDIR= #e.g ~/ALICE/alien-logs
-# export JALIEN_PATH= #e.g ~/jalien (remove if running from CVMfS)
+# Starting script for ML
+# v0.1
+# kwijethu@cern.ch
 
+# export X509_USER_PROXY=
 
 function run_ce() {
     command=$1
@@ -12,16 +13,17 @@ function run_ce() {
     
     if [[ $command = "start" ]]
     then
+        mkdir -p $logDir/CE || echo "Please set VoBox log directory in the LDAP and try again.." && exit 1
         echo "Starting JAliEn CE"
-        nohup "$jalienPath/jalien" ComputingElement > "$logDir/CE.log" 2>"$logDir/CE.err" & 
-        echo $! > "$logDir/CE.pid" 
+        nohup "$jalienPath/jalien" ComputingElement > "$logDir/CE/CE.log" 2>"$logDir/CE/CE.err" & 
+        echo $! > "$logDir/CE/CE.pid" 
     elif [[ $command = "stop" ]]
     then
         echo "Stopping JAliEn CE"
         pkill -f alien.site.ComputingElement
     elif [[ $command = "status" ]]
     then
-    if ps -p $(cat $logDir/CE.pid) > /dev/null 2>&1
+    if ps -p $(cat $logDir/CE/CE.pid) > /dev/null 2>&1
     then
         echo "JAliEn CE is running"
     else
