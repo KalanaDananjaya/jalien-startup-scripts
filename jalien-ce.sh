@@ -10,13 +10,48 @@ function run_ce() {
     command=$1
     logDir=${ALICE_LOGDIR-"${HOME}/ALICE/alien-logs"}
     jalienPath=${2-"${HOME}/.jalien"}
+    envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
+
+    
     
     if [[ $command = "start" ]]
     then
+
+        # Read JAliEn config files
+        if [[ -f "$jalienPath/versions" ]]
+        then
+            declare -A jalienConfiguration
+            while IFS= read -r line
+            do
+            if [[ ! $line = \#* ]] && [[ ! -z $line ]]
+                then
+                key=$(echo $line| cut -d "=" -f 1 | xargs )
+                val=$(echo $line | cut -d "=" -f 2- | xargs)
+                jalienConfiguration[${key^^}]=$val
+            fi
+            done <<< "$jalienPath/versions"
+        fi
+
+        # Check for JAliEn version 
+        if [[ -v "jalienConfiguration[JAliEn]" ]]
+        then
+            eval echo "$envCommand::${jalienConfiguration[version]}"
+        else
+            eval echo "$envCommand"
+        fi
+
+        # Check for JAliEn package
+        if [[ -v "jalienConfiguration[CLASSPATH]" ]]
+        then
+            export "CLASSPATH=${alienConfiguration[CLASSPATH]}"
+        fi
+
+
         mkdir -p $logDir/CE || echo "Please set VoBox log directory in the LDAP and try again.." && exit 1
         echo "Starting JAliEn CE"
         nohup "$jalienPath/jalien" ComputingElement > "$logDir/CE/CE.log" 2>"$logDir/CE/CE.err" & 
         echo $! > "$logDir/CE/CE.pid" 
+
     elif [[ $command = "stop" ]]
     then
         echo "Stopping JAliEn CE"

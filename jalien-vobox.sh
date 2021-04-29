@@ -28,7 +28,9 @@ if [[ $1 = "monalisa" ]]
         echo "jalien-vobox <Command> <Service>"
         echo "<Command> is one of: 'start', 'stop', 'restart', 'status', 'mlstatus', 'systemd'"
 	    echo "<Service> is one of: CE, MonaLisa (defaulting to both if not specified)"
+
     else 
         run_monalisa $2 $ldapHostname $ldapPort $hostname $farmHome 
         run_ce $2
+        
 fi

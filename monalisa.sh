@@ -27,7 +27,7 @@ function template(){
       echo "Change key: $key to value: ${changes[$key]}"
       sed -i "s|$key|${changes[$key]}|" $destFile
   done
-  echo ""
+  unset changes && echo ""
   
   # Append new Lines
   echo ">>> Adding new lines"
@@ -36,7 +36,7 @@ function template(){
     echo "+++ $i"
     echo "$i" >> $destFile
   done
-  echo ""
+  unset add && echo ""
 
   # Remove existing lines
   echo ">>> Removing existing lines"
@@ -46,7 +46,7 @@ function template(){
     echo "--- $i"
     sed -i "/$i\b/d" $destFile
   done
-  echo ""
+  unset rmv && echo ""
 
   echo " --- Templating Complete ---"
   echo ""
@@ -54,19 +54,18 @@ function template(){
 }
 
 function setup() {
-    farmHome=$1;
+    farmHome=$1
     logDir=$2
 
+    add=()
+    rmv=()
+    declare -Ag changes
+
     # Copy base templates to the local directory
-    cp -r "$farmHome/Service/myFarm/" "$logDir/MonaLisa/myFarm/"
+    mkdir -p "$logDir/MonaLisa/myFarm/"
    
     # ===================================================================================
     # myFarm.conf 
-
-    add=();
-    rmv=();
-    unset $changes
-    declare -Ag changes
 
     add+=(${siteConfiguration[MONALISA_ADDMODULES_LIST]}); #TODO : find a site with "addModules” key and test
     add+=("^monLogTail{Cluster=AliEnServicesLogs,Node=CE,command=tail -n 15 -F $logDir/CE/alien.log 2>&1}%3")
@@ -77,21 +76,16 @@ function setup() {
     # ========================================================================================
     # ml.properties
 
-    add=();
-    rmv=();
-    unset $changes
     declare -Ag changes
-
     for key in "${monalisaProperties[@]}"
     do 
         add+=($key)
     done
 
-
-    location=${monalisaConfiguration[LOCATION]-monalisaConfiguration[SITE_LOCATION]} || ""
-    country=${monalisaConfiguration[COUNTRY]-monalisaConfiguration[SITE_COUNTRY]} || ""
-    long=${monalisaConfiguration[LONGITUDE]-monalisaConfiguration[SITE_LONGITUDE]} || "N/A"
-    lat=${monalisaConfiguration[LATITUDE]-monalisaConfiguration[SITE_LATITUDE]} || "N/A"
+    location=${monalisaConfiguration[LOCATION]-${monalisaConfiguration[SITE_LOCATION]}} || ""
+    country=${monalisaConfiguration[COUNTRY]-${monalisaConfiguration[SITE_COUNTRY]}} || ""
+    long=${monalisaConfiguration[LONGITUDE]-${monalisaConfiguration[SITE_LONGITUDE]}} || "N/A"
+    lat=${monalisaConfiguration[LATITUDE]-${monalisaConfiguration[SITE_LATITUDE]}} || "N/A"
 
     changes["^MonaLisa.Location.*"]="MonaLisa.Location=$location"
     changes["^MonaLisa.Country.*"]="MonaLisa.Country=$country"
@@ -102,15 +96,13 @@ function setup() {
 
     # ===================================================================================
     # ml.env
-
-    add=();
-    rmv=();
-    unset $changes
+    
     declare -Ag changes
-
     changes["^FARM_NAME*"]="FARM_NAME=${monalisaConfiguration[NAME]}"
     changes["^#FARM_HOME*"]="FARM_HOME=$logDir/MonaLisa/myFarm"
     changes["^MONALISA_USER*"]="MONALISA_USER=${USER}"
+
+    template "$farmHome/Service/CMD/ml_env" "$logDir/MonaLisa/myFarm/ml_env"
 
     # ============================= Export JAVA OPTS =======================================
     export ALICE_LOGDIR=$logDir
@@ -179,11 +171,14 @@ function run_monalisa() {
         echo "===================== MonAlisa Config ==================="
         for x in "${!monalisaConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaConfiguration[$x]}" ; done
         echo ""
-
-        logDir=${siteConfiguration[LOGDIR]}   
-
-        mkdir -p $logDir/MonaLisa || echo "Please set VoBox log directory in the LDAP and try again.." && exit 1
         
+        logDir=${siteConfiguration[LOGDIR]}  
+
+        mkdir -p "$logDir/MonaLisa" || { echo "Please set VoBox log directory in the LDAP and try again.." && exit 1; }
+        echo "MonAlisa Log Directory: $logDir/MonaLisa"
+        echo "Started configuring MonAlisa..."
+        echo ""
+
         setup $farmHome $logDir
 
         export CONFDIR="$logDir/MonaLisa/myFarm"
