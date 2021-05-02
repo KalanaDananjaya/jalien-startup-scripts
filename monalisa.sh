@@ -140,9 +140,9 @@ function run_monalisa() {
             # Check for MonAlisa version 
             if [[ -v "monalisaConfiguration[MonAlisa]" ]]
             then
-                eval "$envCommand::${monalisaConfiguration[MonAlisa]}"
+                source $("$envCommand::${monalisaConfiguration[MonAlisa]}")
             else
-                eval "$envCommand"
+                source $("$envCommand")
             fi
 
             # ======================== Start templating config files  ========================

@@ -12,8 +12,6 @@ function run_ce() {
     jalienPath=${2-"${HOME}/.jalien"}
     envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
 
-    
-    
     if [[ $command = "start" ]]
     then
 
@@ -35,9 +33,9 @@ function run_ce() {
         # Check for JAliEn version 
         if [[ -v "jalienConfiguration[JAliEn]" ]]
         then
-            eval "$envCommand::${jalienConfiguration[JAliEn]}"
+            source $("$envCommand::${jalienConfiguration[JAliEn]}")
         else
-            eval "$envCommand"
+            source $("$envCommand")
         fi
 
         # Check for JAliEn package
