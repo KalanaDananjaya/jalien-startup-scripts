@@ -35,9 +35,9 @@ function run_ce() {
         # Check for JAliEn version 
         if [[ -v "jalienConfiguration[JAliEn]" ]]
         then
-            eval echo "$envCommand::${jalienConfiguration[version]}"
+            eval "$envCommand::${jalienConfiguration[JAliEn]}"
         else
-            eval echo "$envCommand"
+            eval "$envCommand"
         fi
 
         # Check for JAliEn package

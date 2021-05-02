@@ -100,11 +100,12 @@ function setup() {
     declare -Ag changes
     changes["^FARM_NAME*"]="FARM_NAME=${monalisaConfiguration[NAME]}"
     changes["^#FARM_HOME*"]="FARM_HOME=$logDir/MonaLisa/myFarm"
-    changes["^MONALISA_USER*"]="MONALISA_USER=${USER}"
+    changes["^MONALISA_USER*"]=`MONALISA_USER=id -u -n`
 
     template "$farmHome/Service/CMD/ml_env" "$logDir/MonaLisa/myFarm/ml_env"
 
-    # ============================= Export JAVA OPTS =======================================
+    # ============================= Export variables =====================================
+    export CONFDIR="$logDir/MonaLisa/myFarm"
     export ALICE_LOGDIR=$logDir
     export JAVAOPTS=${monalisaConfiguration[JAVAOPTS]}
     # ===================================================================================
@@ -115,76 +116,109 @@ function run_monalisa() {
 
     if [[ $1 == "start" ]]
     then
-        ldapHostname=$2
-        ldapPort=$3
-        hostname=$4
-        farmHome=$5
+        monalisaPath="${HOME}/.monalisa"
+        envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonAlisa"
+        farmHome=${MonaLisa_HOME} # MonAlisa package location should be defined as an environment variable
 
-        # Obtain site related configurations from LDAP
-        siteLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
-
-        declare -A siteConfiguration
-        while IFS= read -r line; do
-        #Ignore empty,commented and unwanted lines and create an associative array from ldap
-        if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
+        if [[ ! -z $farmHome ]]
+        then
+            # Read MonAlisa config files
+            if [[ -f "$monalisaPath/versions" ]]
             then
-            key=$(echo $line| cut -d ":" -f 1 | xargs )
-            val=$(echo $line | cut -d ":" -f 2- | xargs)
-            val=$(envsubst <<< $val)
-            siteConfiguration[${key^^}]=$val
-        fi
-        done <<< "$siteLDAPQuery"
-
-
-        siteName=${siteConfiguration[MONALISA]}
-
-        # Obtain MonAlisa service related configurations from LDAP
-        monalisaLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "name=$siteName,ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
-
-        declare -A monalisaConfiguration
-        monalisaProperties=()
-        while IFS= read -r line; do
-        #Ignore empty, commented and unwanted lines and create an associative array from ldap
-        if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
-            then
-            # Create a new array for addProperties
-            if [[ $line = addProperties* ]];
-            then
-                val=$(echo $line | cut -d ":" -f 2- | xargs)
-                monalisaProperties+=($val)
-            else
-                key=$(echo $line | cut -d ":" -f 1 | xargs)
-                val=$(echo $line | cut -d ":" -f 2- | xargs)
-                monalisaConfiguration[${key^^}]=$val
+                declare -A monalisaConfiguration
+                while IFS= read -r line
+                do
+                if [[ ! $line = \#* ]] && [[ ! -z $line ]]
+                    then
+                    key=$(echo $line| cut -d "=" -f 1 | xargs )
+                    val=$(echo $line | cut -d "=" -f 2- | xargs)
+                    monalisaConfiguration[${key^^}]=$val
+                fi
+                done <<< "$monalisaPath/versions"
             fi
+
+            # Check for MonAlisa version 
+            if [[ -v "monalisaConfiguration[MonAlisa]" ]]
+            then
+                eval "$envCommand::${monalisaConfiguration[MonAlisa]}"
+            else
+                eval "$envCommand"
+            fi
+
+            # ======================== Start templating config files  ========================
+
+            ldapHostname=$2
+            ldapPort=$3
+            hostname=$4
+
+            # Obtain site related configurations from LDAP
+            siteLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
+
+            declare -A siteConfiguration
+            while IFS= read -r line; do
+            #Ignore empty,commented and unwanted lines and create an associative array from ldap
+            if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
+                then
+                key=$(echo $line| cut -d ":" -f 1 | xargs )
+                val=$(echo $line | cut -d ":" -f 2- | xargs)
+                val=$(envsubst <<< $val)
+                siteConfiguration[${key^^}]=$val
+            fi
+            done <<< "$siteLDAPQuery"
+
+
+            siteName=${siteConfiguration[MONALISA]}
+
+            # Obtain MonAlisa service related configurations from LDAP
+            monalisaLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "name=$siteName,ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
+
+            declare -A monalisaConfiguration
+            monalisaProperties=()
+            while IFS= read -r line; do
+            #Ignore empty, commented and unwanted lines and create an associative array from ldap
+            if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
+                then
+                # Create a new array for addProperties
+                if [[ $line = addProperties* ]];
+                then
+                    val=$(echo $line | cut -d ":" -f 2- | xargs)
+                    monalisaProperties+=($val)
+                else
+                    key=$(echo $line | cut -d ":" -f 1 | xargs)
+                    val=$(echo $line | cut -d ":" -f 2- | xargs)
+                    monalisaConfiguration[${key^^}]=$val
+                fi
+            fi
+            done <<< "$monalisaLDAPQuery"
+
+            echo "===================== Base Config ==================="
+            for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" ; done
+            echo ""
+
+            echo "===================== MonAlisa Properties ==================="
+            for x in "${monalisaProperties[@]}"; do printf  "$x\n"  ; done
+            echo ""
+
+            echo "===================== MonAlisa Config ==================="
+            for x in "${!monalisaConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaConfiguration[$x]}" ; done
+            echo ""
+            
+            logDir=${siteConfiguration[LOGDIR]}  
+
+            mkdir -p "$logDir/MonaLisa" || { echo "Please set VoBox log directory in the LDAP and try again.." && exit 1; }
+            echo "MonAlisa Log Directory: $logDir/MonaLisa"
+            echo "Started configuring MonAlisa..."
+            echo ""
+
+            setup $farmHome $logDir          
+
+            # Start MonAlisa
+            echo "Starting MonALisa.... Please check $logDir/ML.log for logs"
+            nohup $farmHome/Service/CMD/ML_SER start &> "$logDir/ML.log"
+
+        else
+            echo "Please point MonAlisa_Home variable to the MonAlisa package location.." && exit 1
         fi
-        done <<< "$monalisaLDAPQuery"
-
-        echo "===================== Base Config ==================="
-        for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" ; done
-        echo ""
-
-        echo "===================== MonAlisa Properties ==================="
-        for x in "${monalisaProperties[@]}"; do printf  "$x\n"  ; done
-        echo ""
-
-        echo "===================== MonAlisa Config ==================="
-        for x in "${!monalisaConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaConfiguration[$x]}" ; done
-        echo ""
-        
-        logDir=${siteConfiguration[LOGDIR]}  
-
-        mkdir -p "$logDir/MonaLisa" || { echo "Please set VoBox log directory in the LDAP and try again.." && exit 1; }
-        echo "MonAlisa Log Directory: $logDir/MonaLisa"
-        echo "Started configuring MonAlisa..."
-        echo ""
-
-        setup $farmHome $logDir
-
-        export CONFDIR="$logDir/MonaLisa/myFarm"
-        echo "Starting MonALisa.... Please check $logDir/ML.log for logs"
-        nohup $farmHome/Service/CMD/ML_SER start &> "$logDir/ML.log"
-
     elif [[ $1 == "stop" ]]
     then
         echo "Stopping MonAlisa..."
