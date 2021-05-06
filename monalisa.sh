@@ -116,7 +116,7 @@ function run_monalisa() {
 
     if [[ $1 == "start" ]]
     then
-        monalisaPath="${HOME}/.jalien/monalisa"
+        monalisaConfigPath="${HOME}/.jalien/monalisa"
         envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
         farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable
         envFile="$logDir/ml-env.sh"
@@ -125,7 +125,7 @@ function run_monalisa() {
         if [[ ! -z $farmHome ]]
         then
             # Read MonAlisa config files
-            if [[ -f "$monalisaPath/versions" ]]
+            if [[ -f "$monalisaConfigPath/versions" ]]
             then
                 declare -A monalisaConfiguration
                 while IFS= read -r line
@@ -136,7 +136,7 @@ function run_monalisa() {
                     val=$(echo $line | cut -d "=" -f 2- | xargs)
                     monalisaConfiguration[${key^^}]=$val
                 fi
-                done <<< "$monalisaPath/versions"
+                done <<< "$monalisaConfigPath/versions"
             fi
 
             # Check for MonAlisa version 

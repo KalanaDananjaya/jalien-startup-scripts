@@ -8,7 +8,6 @@
 ldapHostname="alice-ldap.cern.ch"
 ldapPort="8389"
 hostname=`hostname -f`
-export MonaLisa_Home="/home/kalana/MonaLisa" #TODO Obtain CVMFS location
 
 source ./jalien-ce.sh
 source ./monalisa.sh
