@@ -9,7 +9,7 @@
 function run_ce() {
     command=$1
     logDir=${ALICE_LOGDIR-"${HOME}/ALICE/alien-logs"}
-    jalienPath=${2-"${HOME}/.jalien"}
+    jalienPath=${2-"${HOME}/.jalien/CE"}
     envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
 
     if [[ $command = "start" ]]
@@ -45,7 +45,7 @@ function run_ce() {
         fi
 
 
-        mkdir -p $logDir/CE || echo "Please set VoBox log directory in the LDAP and try again.." && exit 1
+        mkdir -p $logDir/CE || { echo "Please set VoBox log directory in the LDAP and try again.." && exit 1; }
         echo "Starting JAliEn CE"
         nohup "$jalienPath/jalien" ComputingElement > "$logDir/CE/CE.log" 2>"$logDir/CE/CE.err" & 
         echo $! > "$logDir/CE/CE.pid" 

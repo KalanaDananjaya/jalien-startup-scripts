@@ -116,9 +116,9 @@ function run_monalisa() {
 
     if [[ $1 == "start" ]]
     then
-        monalisaPath="${HOME}/.monalisa"
+        monalisaPath="${HOME}/.jalien/monalisa"
         envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonAlisa"
-        farmHome=${MonaLisa_HOME} # MonAlisa package location should be defined as an environment variable
+        farmHome=${MonAlisa_HOME} # MonAlisa package location should be defined as an environment variable
 
         if [[ ! -z $farmHome ]]
         then
