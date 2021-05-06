@@ -11,11 +11,10 @@ function run_ce() {
     logDir=${ALICE_LOGDIR-"${HOME}/ALICE/alien-logs"}
     jalienPath=${2-"${HOME}/.jalien/CE"}
     envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
-    envFie="$logDir/CE/env.sh"
+    envFile="$logDir/ce-env.sh"
 
     if [[ $command = "start" ]]
     then
-
         # Read JAliEn config files
         if [[ -f "$jalienPath/versions" ]]
         then
@@ -34,20 +33,19 @@ function run_ce() {
         # Check for JAliEn package
         if [[ -v "jalienConfiguration[CLASSPATH]" ]]
         then
-            echo "CLASSPATH=${alienConfiguration[CLASSPATH]}; export CLASSPATH" >> $envFie
+            echo "CLASSPATH=${alienConfiguration[CLASSPATH]}; export CLASSPATH" >> $envFile
         fi
 
         # Check for JAliEn version 
         if [[ -v "jalienConfiguration[JAliEn]" ]]
         then
-            
-            echo $("$envCommand::${jalienConfiguration[JAliEn]}") > $envFie
-            source $envFie
+            envVersionCommand="$envCommand::${jalienConfiguration[JAliEn]}"
+            $envVersionCommand >> $envFile
+            source $envFile
         else
-            echo $("$envCommand") > $envFie
-            source $envFie
+            $envCommand >> $envFile
+            source $envFile
         fi
-
         
         mkdir -p $logDir/CE || { echo "Please set VoBox log directory in the LDAP and try again.." && exit 1; }
         echo "Starting JAliEn CE"

@@ -119,7 +119,7 @@ function run_monalisa() {
         monalisaPath="${HOME}/.jalien/monalisa"
         envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
         farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable
-        envFie="$logDir/MonaLisa/env.sh"
+        envFile="$logDir/ml-env.sh"
 
 
         if [[ ! -z $farmHome ]]
@@ -142,11 +142,12 @@ function run_monalisa() {
             # Check for MonAlisa version 
             if [[ -v "monalisaConfiguration[MonaLisa]" ]]
             then
-                echo $("$envCommand::${monalisaConfiguration[MonaLisa]}") > $envFie
-                source $envFie
+                envVersionCommand="$envCommand::${monalisaConfiguration[MonaLisa]}"
+                $envVersionCommand > $envFile
+                source $envFile
             else
-                echo $("$envCommand") > $envFie
-                source $envFie
+                $envCommand > $envFile
+                source $envFile
             fi
 
             # ======================== Start templating config files  ========================
