@@ -117,8 +117,10 @@ function run_monalisa() {
     if [[ $1 == "start" ]]
     then
         monalisaPath="${HOME}/.jalien/monalisa"
-        envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonAlisa"
-        farmHome=${MonAlisa_HOME} # MonAlisa package location should be defined as an environment variable
+        envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
+        farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable
+        envFie="$logDir/MonaLisa/env.sh"
+
 
         if [[ ! -z $farmHome ]]
         then
@@ -138,11 +140,13 @@ function run_monalisa() {
             fi
 
             # Check for MonAlisa version 
-            if [[ -v "monalisaConfiguration[MonAlisa]" ]]
+            if [[ -v "monalisaConfiguration[MonaLisa]" ]]
             then
-                source $("$envCommand::${monalisaConfiguration[MonAlisa]}")
+                echo $("$envCommand::${monalisaConfiguration[MonaLisa]}") > $envFie
+                source $envFie
             else
-                source $("$envCommand")
+                echo $("$envCommand") > $envFie
+                source $envFie
             fi
 
             # ======================== Start templating config files  ========================
@@ -195,33 +199,33 @@ function run_monalisa() {
             for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" ; done
             echo ""
 
-            echo "===================== MonAlisa Properties ==================="
+            echo "===================== MonaLisa Properties ==================="
             for x in "${monalisaProperties[@]}"; do printf  "$x\n"  ; done
             echo ""
 
-            echo "===================== MonAlisa Config ==================="
+            echo "===================== MonaLisa Config ==================="
             for x in "${!monalisaConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaConfiguration[$x]}" ; done
             echo ""
             
             logDir=${siteConfiguration[LOGDIR]}  
 
             mkdir -p "$logDir/MonaLisa" || { echo "Please set VoBox log directory in the LDAP and try again.." && exit 1; }
-            echo "MonAlisa Log Directory: $logDir/MonaLisa"
+            echo "MonaLisa Log Directory: $logDir/MonaLisa"
             echo "Started configuring MonAlisa..."
             echo ""
 
             setup $farmHome $logDir          
 
-            # Start MonAlisa
-            echo "Starting MonALisa.... Please check $logDir/ML.log for logs"
+            # Start MonaLisa
+            echo "Starting MonaLisa.... Please check $logDir/ML.log for logs"
             nohup $farmHome/Service/CMD/ML_SER start &> "$logDir/ML.log"
 
         else
-            echo "Please point MonAlisa_Home variable to the MonAlisa package location.." && exit 1
+            echo "Please point MonaLisa variable to the MonaLisa package location.." && exit 1
         fi
     elif [[ $1 == "stop" ]]
     then
-        echo "Stopping MonAlisa..."
+        echo "Stopping MonaLisa..."
         for pid in $(ps -aux | grep -i mona | awk '{print $2}')
         do
             # request children to shutdown

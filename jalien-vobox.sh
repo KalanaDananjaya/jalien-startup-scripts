@@ -8,7 +8,7 @@
 ldapHostname="alice-ldap.cern.ch"
 ldapPort="8389"
 hostname="voboxalice8.cern.ch" #TODO: Change to `hostname -f`
-export MonAlisa_Home="/home/kalana/MonAlisa" #TODO Obtain CVMFS location
+export MonaLisa_Home="/home/kalana/MonaLisa" #TODO Obtain CVMFS location
 
 source ./jalien-ce.sh
 source ./monalisa.sh
@@ -27,7 +27,7 @@ if [[ $1 = "monalisa" ]]
     then
         echo "jalien-vobox <Command> <Service>"
         echo "<Command> is one of: 'start', 'stop', 'restart', 'status', 'mlstatus', 'systemd'"
-	    echo "<Service> is one of: CE, MonaLisa (defaulting to both if not specified)"
+	    echo "<Service> is one of: ce, monalisa (defaulting to both if not specified)"
 
     else 
         run_monalisa $2 $ldapHostname $ldapPort $hostname
