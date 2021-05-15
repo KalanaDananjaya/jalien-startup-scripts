@@ -4,8 +4,6 @@
 # v0.1
 # kwijethu@cern.ch
 
-# export X509_USER_PROXY=
-
 function run_ce() {
     command=$1
     logDir=${ALICE_LOGDIR-"${HOME}/ALICE/alien-logs"}
