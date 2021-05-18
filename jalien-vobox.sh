@@ -44,7 +44,7 @@ done
 
 [[ "$2" = $svc ]] || [[ "$2" = "" ]] || usage
 
-for svc in ${2usage:-$svcs}
+for svc in ${2:-$svcs}
 do
     if [[ $svc = "monalisa" ]]
     then

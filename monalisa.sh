@@ -100,7 +100,7 @@ function setup() {
     declare -Ag changes
     changes["^FARM_NAME*"]="FARM_NAME=${monalisaLDAPconfiguration[NAME]}"
     changes["^#FARM_HOME*"]="FARM_HOME=$logDir/myFarm"
-    changes["^MONALISA_USER*"]=`MONALISA_USER=id -u -n`
+    changes["^MONALISA_USER*"]="MONALISA_USER=$(id -u -n)"
 
     template "$farmHome/Service/CMD/ml_env" "$logDir/myFarm/ml_env"
 
@@ -125,10 +125,10 @@ function run_monalisa() {
             ldapHostname=$3
             ldapPort=$4
             hostname=$5
-
+            
             # Obtain site related configurations from LDAP
-            siteLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
-
+            siteLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
+            
             declare -A siteConfiguration
             while IFS= read -r line
             do
@@ -140,10 +140,11 @@ function run_monalisa() {
                 val=$(envsubst <<< $val)
                 siteConfiguration[${key^^}]=$val
             fi
-            done < "$siteLDAPQuery"
-
+            done <<< "$siteLDAPQuery"
+            
             # Obtain MonAlisa service related configurations from LDAP
-            monalisaLDAPQuery=$(ldapsearch -x -h $ldapHostname -p $ldapPort -b "name=$siteName,ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
+            siteName=${siteConfiguration[MONALISA]}
+            monalisaLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "name=$siteName,ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch")
 
             declare -A monalisaLDAPconfiguration
             monalisaProperties=()
@@ -162,7 +163,7 @@ function run_monalisa() {
                     monalisaLDAPconfiguration[${key^^}]=$val
                 fi
             fi
-            done < "$monalisaLDAPQuery"
+            done <<< "$monalisaLDAPQuery"
 
             echo "===================== Base Config ==================="
             for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" ; done
@@ -176,9 +177,9 @@ function run_monalisa() {
             for x in "${!monalisaLDAPconfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaLDAPconfiguration[$x]}" ; done
             echo ""
             
-            siteName=${siteConfiguration[MONALISA]}
+            
             baseLogDir=${siteConfiguration[LOGDIR]}
-            logDir="$baseLogDir/MonAlisa"
+            logDir="$baseLogDir/MonaLisa"
             envFile="$logDir/ml-env.sh"
             mlConf="$confDir/ml.conf"
             mlEnv="$confDir/ml.env"
@@ -198,7 +199,7 @@ function run_monalisa() {
                     val=$(echo $line | cut -d "=" -f 2- | xargs)
                     monalisaConfiguration[${key^^}]=$val
                 fi
-                done < "$mlConf"
+                done <<< "$mlConf"
             fi
 
             # Reset the environment
