@@ -9,12 +9,10 @@ function run_ce() {
     confDir=$2
     
     logDir=${ALICE_LOGDIR-"${HOME}/ALICE/alien-logs"}/CE
-	mkdir -p $logDir
     envFile="$logDir/CE-env.sh"
     pidFile="$logDir/CE.pid"
-    mkdir -p $logDir || return
+    mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return; }
 
-    
     ceConf="$confDir/CE.conf"
     ceEnv="$confDir/CE.env"
     envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
@@ -59,7 +57,7 @@ function run_ce() {
 	(
 	    # In a subshell, to get the process detached from the parent
 
-	    cd
+	    cd $logDir
 	    nohup jalien $className > "$logFile" 2>&1 < /dev/null &
 	    echo $! > "$pidFile"
 	)

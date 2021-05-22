@@ -216,7 +216,7 @@ function run_monalisa() {
             $envCommand >> $envFile
             source $envFile
 
-            mkdir -p $logDir || { echo "Please set VoBox log directory in the LDAP and try again.." && exit 1; }
+            mkdir -p $logDir || { echo "Unable to create log directory at $logDir or log directory not found in LDAP configuration" && return; }
             echo "MonaLisa Log Directory: $logDir"
             echo "Started configuring MonAlisa..."
             echo ""
@@ -226,7 +226,7 @@ function run_monalisa() {
             echo "Starting MonAlisa.... Please check $logFile for logs"
             (
                 # In a subshell, to get the process detached from the parent
-                cd
+                cd $logDir
                 nohup $farmHome/Service/CMD/ML_SER start > "$logFile" 2>&1 < /dev/null &
                 echo $! > "$pidFile"
             )
@@ -239,7 +239,7 @@ function run_monalisa() {
         for pid in $(ps -aux | grep -i mona | awk '{print $2}')
         do
             # request children to shutdown
-            kill -0 ${pid} 2>/dev/null 
+            kill -0 -s SIGTERM ${pid} 2>/dev/null 
         done
     fi
 }
