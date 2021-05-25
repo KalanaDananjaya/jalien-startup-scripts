@@ -98,9 +98,9 @@ function setup() {
     # ml.env
     
     declare -Ag changes
-    changes["^FARM_NAME*"]="FARM_NAME=${monalisaLDAPconfiguration[NAME]}"
-    changes["^#FARM_HOME*"]="FARM_HOME=$logDir/myFarm"
-    changes["^MONALISA_USER*"]="MONALISA_USER=$(id -u -n)"
+    changes["^FARM_NAME.*"]="FARM_NAME=\"${monalisaLDAPconfiguration[NAME]}\""
+    changes["^FARM_HOME.*"]="FARM_HOME=\"$logDir/myFarm\""
+    changes["^MONALISA_USER.*"]="MONALISA_USER=\"$(id -u -n)\""
 
     template "$farmHome/Service/CMD/ml_env" "$logDir/myFarm/ml_env"
 
@@ -132,8 +132,8 @@ function run_monalisa() {
             declare -A siteConfiguration
             while IFS= read -r line
             do
-            #Ignore empty,commented and unwanted lines and create an associative array from ldap
-            if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
+            #Ignore empty lines and create an associative array from ldap configuration
+            if [[ ! -z $line ]]
                 then
                 key=$(echo $line| cut -d ":" -f 1 | xargs )
                 val=$(echo $line | cut -d ":" -f 2- | xargs)
@@ -150,7 +150,7 @@ function run_monalisa() {
             monalisaProperties=()
             while IFS= read -r line
             do
-            if [[ ! $line = \#* ]] && [[ ! -z $line ]] && [[ ! $line = search* ]] && [[ ! $line = result* ]];
+            if [[ ! -z $line ]]
                 then
                 # Create a new array for addProperties
                 if [[ $line = addProperties* ]];
@@ -184,7 +184,7 @@ function run_monalisa() {
             mlConf="$confDir/ml.conf"
             mlEnv="$confDir/ml.env"
             pidFile="$logDir/ml.pid"
-            envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa" 
+            envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
             logFile="$logDir/ml-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
 
             # Read MonaLaLisa config files
