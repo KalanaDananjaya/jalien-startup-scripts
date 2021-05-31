@@ -1,0 +1,8 @@
+[Unit]
+Description=JAliEn VoBox StartUp Scripts
+
+[Service]
+ExecStart=/home/kalana/ALICE/startup/jalien-vobox.sh
+
+[Install]
+WantedBy=multi-user.target
