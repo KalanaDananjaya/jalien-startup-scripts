@@ -111,143 +111,188 @@ function setup() {
     # ===================================================================================
 }
 
+function check_liveness(){
+    pid=$(ps -aux | grep -i 'DMonaLisa_HOME=' | grep -v grep)
+    if [[ -z $pid ]]
+    then
+        return 1
+    else
+        return 0
+    fi
+}
+
+function start(){
+    # Check if there is an existing instance
+    check_liveness
+    if [[ $? == 0 ]]
+    then
+        echo "Existing instance of MonaLisa already running..." && exit 1
+    fi
+    confDir=$1
+    farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable     
+
+    if [[ -z $farmHome ]]
+    then
+        echo "Please point MonaLisa variable to the MonaLisa package location by setting the environment variable MonaLisa_HOME" && exit 1
+    fi
+    # ======================== Start templating config files  ========================
+    ldapHostname=$2
+    ldapPort=$3
+    hostname=$4
+    
+    # Obtain site related configurations from LDAP
+    siteLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch" 2> /dev/null )
+    declare -A siteConfiguration
+    while IFS= read -r line
+    do
+    #Ignore empty lines and create an associative array from ldap configuration
+    if [[ ! -z $line ]]
+    then
+        key=$(echo $line| cut -d ":" -f 1 | xargs )
+        val=$(echo $line | cut -d ":" -f 2- | xargs)
+        val=$(envsubst <<< $val)
+        siteConfiguration[${key^^}]=$val
+    fi
+    done <<< "$siteLDAPQuery"
+
+    # Obtain MonAlisa service related configurations from LDAP
+    siteName=${siteConfiguration[MONALISA]}
+    if [[ -z $siteName ]]
+    then
+        echo "LDAP Configuration for MonaLisa configuration not found. Please set it up and try again." && exit 1
+    fi
+    monalisaLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "name=$siteName,ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch" 2> /dev/null)
+
+    declare -A monalisaLDAPconfiguration
+    monalisaProperties=()
+    while IFS= read -r line
+    do
+    if [[ ! -z $line ]]
+        then
+        # Create a new array for addProperties
+        if [[ $line = addProperties* ]];
+        then
+            val=$(echo $line | cut -d ":" -f 2- | xargs)
+            monalisaProperties+=($val)
+        else
+            key=$(echo $line | cut -d ":" -f 1 | xargs)
+            val=$(echo $line | cut -d ":" -f 2- | xargs)
+            monalisaLDAPconfiguration[${key^^}]=$val
+        fi
+    fi
+    done <<< "$monalisaLDAPQuery"
+
+    echo "===================== Base Config ==================="
+    for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" ; done
+    echo ""
+
+    echo "===================== MonaLisa Properties ==================="
+    for x in "${monalisaProperties[@]}"; do printf  "$x\n"  ; done
+    echo ""
+
+    echo "===================== MonaLisa Config ==================="
+    for x in "${!monalisaLDAPconfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaLDAPconfiguration[$x]}" ; done
+    echo ""
+    
+    
+    baseLogDir=${siteConfiguration[LOGDIR]}
+    if [[ -z $baseLogDir ]]
+    then
+        echo "LDAP Configuration for Log directory not found. Please set it up and try again." && exit 1
+    fi
+
+    logDir="$baseLogDir/MonaLisa"
+    envFile="$logDir/ml-env.sh"
+    mlConf="$confDir/ml.conf"
+    mlEnv="$confDir/ml.env"
+    pidFile="$logDir/ml.pid"
+    envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
+    logFile="$logDir/ml-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
+
+    # Read MonaLaLisa config files
+    if [[ -f "$mlConf" ]]
+    then
+        declare -A monalisaConfiguration
+        while IFS= read -r line
+        do
+        if [[ ! $line = \#* ]] && [[ ! -z $line ]]
+            then
+            key=$(echo $line| cut -d "=" -f 1 | xargs )
+            val=$(echo $line | cut -d "=" -f 2- | xargs)
+            monalisaConfiguration[${key^^}]=$val
+        fi
+        done <<< "$mlConf"
+    fi
+
+    # Reset the environment
+    > $envFile
+
+    # Bootstrap the environment e.g. with the correct X509_USER_PROXY
+    [[ -f "$mlEnv" ]] && cat "$mlEnv" >> $envFile
+
+    # Check for MonAlisa version 
+    if [[ -n "${monalisaConfiguration[MonaLisa]}" ]]
+    then
+        envCommand="$envCommand/${monalisaConfiguration[MonaLisa]}"
+    fi
+    $envCommand >> $envFile
+    source $envFile
+
+    mkdir -p $logDir || { echo "Unable to create log directory at $logDir or log directory not found in LDAP configuration" && return; }
+    echo "MonaLisa Log Directory: $logDir"
+    echo "Started configuring MonAlisa..."
+    echo ""
+
+    setup $farmHome $logDir    
+
+    echo "Starting MonAlisa.... Please check $logFile for logs"
+    (
+        # In a subshell, to get the process detached from the parent
+        cd $logDir
+        nohup $farmHome/Service/CMD/ML_SER start > "$logFile" 2>&1 < /dev/null &
+        echo $! > "$pidFile"
+    )
+}
+
+function stop(){
+    echo "Stopping MonaLisa..."
+    for pid in $(ps -aux | grep -i 'DMonaLisa_HOME=' | grep -v grep | awk '{print $2}')
+    do
+        # request children to shutdown
+        kill -s TERM ${pid} 2>/dev/null 
+    done
+}
+
+function mlstatus() {
+    check_liveness
+    if [[ $? == 0 ]]
+    then 
+        echo -e "Status \t $? \t MonaLisa Running"
+    elif [[ $? == 1 ]]
+    then
+        echo -e "Status \t $? \t MonaLisa Not Running"
+    fi
+}
 
 function run_monalisa() {
 
     if [[ $1 == "start" ]]
     then
         confDir=$2
-        farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable     
-
-        if [[ -z $farmHome ]]
-        then
-            echo "Please point MonaLisa variable to the MonaLisa package location by setting the environment variable MonaLisa_HOME" && exit 1
-        fi
-        # ======================== Start templating config files  ========================
         ldapHostname=$3
         ldapPort=$4
         hostname=$5
-        
-        # Obtain site related configurations from LDAP
-        siteLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch" > /dev/null 2>&1)
-        declare -A siteConfiguration
-        while IFS= read -r line
-        do
-        #Ignore empty lines and create an associative array from ldap configuration
-        if [[ ! -z $line ]]
-            then
-            key=$(echo $line| cut -d ":" -f 1 | xargs )
-            val=$(echo $line | cut -d ":" -f 2- | xargs)
-            val=$(envsubst <<< $val)
-            siteConfiguration[${key^^}]=$val
-        fi
-        done <<< "$siteLDAPQuery"
-
-        # Obtain MonAlisa service related configurations from LDAP
-        siteName=${siteConfiguration[MONALISA]}
-        if [[ -z $siteName ]]
-        then
-            echo "LDAP Configuration for MonaLisa configuration not found. Please set it up and try again." && exit 1
-        fi
-        monalisaLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "name=$siteName,ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch" > /dev/null 2>&1)
-
-        declare -A monalisaLDAPconfiguration
-        monalisaProperties=()
-        while IFS= read -r line
-        do
-        if [[ ! -z $line ]]
-            then
-            # Create a new array for addProperties
-            if [[ $line = addProperties* ]];
-            then
-                val=$(echo $line | cut -d ":" -f 2- | xargs)
-                monalisaProperties+=($val)
-            else
-                key=$(echo $line | cut -d ":" -f 1 | xargs)
-                val=$(echo $line | cut -d ":" -f 2- | xargs)
-                monalisaLDAPconfiguration[${key^^}]=$val
-            fi
-        fi
-        done <<< "$monalisaLDAPQuery"
-
-        echo "===================== Base Config ==================="
-        for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" ; done
-        echo ""
-
-        echo "===================== MonaLisa Properties ==================="
-        for x in "${monalisaProperties[@]}"; do printf  "$x\n"  ; done
-        echo ""
-
-        echo "===================== MonaLisa Config ==================="
-        for x in "${!monalisaLDAPconfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaLDAPconfiguration[$x]}" ; done
-        echo ""
-        
-        
-        baseLogDir=${siteConfiguration[LOGDIR]}
-        if [[ -z $baseLogDir ]]
-        then
-            echo "LDAP Configuration for Log directory not found. Please set it up and try again." && exit 1
-        fi
-
-        logDir="$baseLogDir/MonaLisa"
-        envFile="$logDir/ml-env.sh"
-        mlConf="$confDir/ml.conf"
-        mlEnv="$confDir/ml.env"
-        pidFile="$logDir/ml.pid"
-        envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
-        logFile="$logDir/ml-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
-
-        # Read MonaLaLisa config files
-        if [[ -f "$mlConf" ]]
-        then
-            declare -A monalisaConfiguration
-            while IFS= read -r line
-            do
-            if [[ ! $line = \#* ]] && [[ ! -z $line ]]
-                then
-                key=$(echo $line| cut -d "=" -f 1 | xargs )
-                val=$(echo $line | cut -d "=" -f 2- | xargs)
-                monalisaConfiguration[${key^^}]=$val
-            fi
-            done <<< "$mlConf"
-        fi
-
-        # Reset the environment
-        > $envFile
-
-        # Bootstrap the environment e.g. with the correct X509_USER_PROXY
-        [[ -f "$mlEnv" ]] && cat "$mlEnv" >> $envFile
-
-        # Check for MonAlisa version 
-        if [[ -n "${monalisaConfiguration[MonaLisa]}" ]]
-        then
-            envCommand="$envCommand/${monalisaConfiguration[MonaLisa]}"
-        fi
-        $envCommand >> $envFile
-        source $envFile
-
-        mkdir -p $logDir || { echo "Unable to create log directory at $logDir or log directory not found in LDAP configuration" && return; }
-        echo "MonaLisa Log Directory: $logDir"
-        echo "Started configuring MonAlisa..."
-        echo ""
-
-        setup $farmHome $logDir    
-
-        echo "Starting MonAlisa.... Please check $logFile for logs"
-        (
-            # In a subshell, to get the process detached from the parent
-            cd $logDir
-            nohup $farmHome/Service/CMD/ML_SER start > "$logFile" 2>&1 < /dev/null &
-            echo $! > "$pidFile"
-        )
+        start $confDir $ldapHostname $ldapPort $hostname
     elif [[ $1 == "stop" ]]
     then
-        echo "Stopping MonaLisa..."
-        for pid in $(ps -aux | grep -i mona | awk '{print $2}')
-        do
-            # request children to shutdown
-            kill -s TERM ${pid} 2>/dev/null 
-        done
+        stop
+    elif [[ $1 == "restart" ]]
+    then
+        stop
+        start $confDir $ldapHostname $ldapPort $hostname
+    elif [[ $1 == "mlstatus" ]]
+    then
+        mlstatus
     fi
 }
 
