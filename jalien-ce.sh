@@ -21,12 +21,13 @@ function check_liveness_ce(){
 
 function status_ce() {
     check_liveness_ce
-    if [[ $? == 0 ]]
+    exit_code=$?
+    if [[ $exit_code == 0 ]]
     then 
-        echo -e "Status \t $? \t CE Running"
-    elif [[ $? == 1 ]]
+        echo -e "Status \t $exit_code \t CE Running"
+    elif [[ $exit_code == 1 ]]
     then
-        echo -e "Status \t $? \t CE Not Running"
+        echo -e "Status \t $exit_code \t CE Not Running"
     fi
 }
 

@@ -286,12 +286,13 @@ function stop_ml(){
 
 function status_ml() {
     check_liveness_ml
-    if [[ $? == 0 ]]
+    exit_code=$?
+    if [[ $exit_code == 0 ]]
     then 
-        echo -e "Status \t $? \t MonaLisa Running"
-    elif [[ $? == 1 ]]
+        echo -e "Status \t $exit_code \t MonaLisa Running"
+    elif [[ $exit_code == 1 ]]
     then
-        echo -e "Status \t $? \t MonaLisa Not Running"
+        echo -e "Status \t $exit_code \t MonaLisa Not Running"
     fi
 }
 
