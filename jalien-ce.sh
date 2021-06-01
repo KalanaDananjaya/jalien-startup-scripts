@@ -10,7 +10,7 @@ function stop_ce() {
 }
 
 function check_liveness_ce(){
-    pid=$(ps -aux | grep -i 'DMonaLisa_HOME=' | grep -v grep)
+    pid=$(ps -aux | grep -i 'alien.site.ComputingElement=' | grep -v grep)
     if [[ -z $pid ]]
     then
         return 1
