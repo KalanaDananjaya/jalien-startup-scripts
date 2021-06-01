@@ -285,7 +285,7 @@ function stop_ml(){
 }
 
 function status_ml() {
-    check_liveness
+    check_liveness_ml
     if [[ $? == 0 ]]
     then 
         echo -e "Status \t $? \t MonaLisa Running"
@@ -302,7 +302,7 @@ function run_monalisa() {
         ldapHostname=$3
         ldapPort=$4
         hostname=$5
-        start $confDir $ldapHostname $ldapPort $hostname
+        start_ml $confDir $ldapHostname $ldapPort $hostname
 
     elif [[ $1 == "stop" ]]
     then
