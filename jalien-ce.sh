@@ -4,37 +4,60 @@
 # v0.1
 # kwijethu@cern.ch
 
-function run_ce() {
-    command=$1
-    confDir=$2
-    
-    logDir=${ALICE_LOGDIR-"${HOME}/ALICE/alien-logs"}/CE
-    envFile="$logDir/CE-env.sh"
-    pidFile="$logDir/CE.pid"
-    mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return; }
+function stop_ce() {
+	echo "Stopping JAliEn CE"
+	pkill -f $1
+}
 
-    ceConf="$confDir/CE.conf"
+function check_liveness_ce(){
+    pid=$(ps -aux | grep -i 'DMonaLisa_HOME=' | grep -v grep)
+    if [[ -z $pid ]]
+    then
+        return 1
+    else
+        return 0
+    fi
+}
+
+function status_ce() {
+    check_liveness_ce
+    if [[ $? == 0 ]]
+    then 
+        echo -e "Status \t $? \t CE Running"
+    elif [[ $? == 1 ]]
+    then
+        echo -e "Status \t $? \t CE Not Running"
+    fi
+}
+
+function start_ce(){
+	confDir=$1
+    className=$2
+
+    ceConf="$confDir/CE.properties"
     ceEnv="$confDir/CE.env"
     envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
-    className=alien.site.ComputingElement
 
-    if [[ $command = "start" ]]
-    then
 	# Read JAliEn config files
 	if [[ -f "$ceConf" ]]
 	then
-	    declare -A jalienConfiguration
+		declare -A jalienConfiguration
 
-	    while IFS= read -r line
-	    do
+		while IFS= read -r line
+		do
 		if [[ ! $line = \#* ]] && [[ ! -z $line ]]
 		then
-		    key=$(echo $line | cut -d "=" -f 1  | xargs)
-		    val=$(echo $line | cut -d "=" -f 2- | xargs)
-		    jalienConfiguration[${key^^}]=$val
+			key=$(echo $line | cut -d "=" -f 1  | xargs)
+			val=$(echo $line | cut -d "=" -f 2- | xargs)
+			jalienConfiguration[${key^^}]=$val
 		fi
-	    done < "$ceConf"
+		done < "$ceConf"
 	fi
+
+	logDir=${jalienConfiguration[LOGDIR]-"${HOME}/ALICE/alien-logs"}/CE
+    envFile="$logDir/CE-env.sh"
+    pidFile="$logDir/CE.pid"
+    mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return; }
 
 	# Reset the environment
 	> $envFile
@@ -45,7 +68,7 @@ function run_ce() {
 	# Check for JAliEn version
 	if [[ -n "${jalienConfiguration[JALIEN]}" ]]
 	then
-	    envCommand="$envCommand/${jalienConfiguration[JALIEN]}"
+		envCommand="$envCommand/${jalienConfiguration[JALIEN]}"
 	fi
 
 	$envCommand >> $envFile
@@ -55,31 +78,37 @@ function run_ce() {
 
 	echo "Starting JAliEn CE.... Please check $logFile for logs"
 	(
-	    # In a subshell, to get the process detached from the parent
-
-	    cd $logDir
-	    nohup jalien $className > "$logFile" 2>&1 < /dev/null &
-	    echo $! > "$pidFile"
+		# In a subshell, to get the process detached from the parent
+		cd $logDir
+		nohup jalien $className > "$logFile" 2>&1 < /dev/null &
+		echo $! > "$pidFile"
 	)
+}
+
+function run_ce() {
+    command=$1
+    confDir=$2
+    className=alien.site.ComputingElement
+
+    if [[ $command = "start" ]]
+    then
+		start_ce $confDir $className
 
     elif [[ $command = "stop" ]]
     then
-		echo "Stopping JAliEn CE"
-		pkill -f $className
+		stop_ce $className
 
-    elif [[ $command = "status" ]]
+	elif [[ $command = "restart" ]]
     then
-		if (ps -p $(cat $pidFile) -fww | fgrep $className) > /dev/null 2>&1
-		then
-			echo "JAliEn CE is running"
-			return 0
-		else
-			echo "JAliEn CE is NOT running"
-			return 1
-		fi
+		stop_ce $className
+		start_ce $confDir $className
+
+    elif [[ $command = "mlstatus" ]]
+    then
+		status_ce
 
     else
-	echo "Command must be one of: 'start', 'stop' or 'status'"
+	echo "Command must be one of: 'start', 'stop', 'restart' or 'mlstatus'"
 	return 2
     fi
 }

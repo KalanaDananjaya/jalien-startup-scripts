@@ -111,7 +111,7 @@ function setup() {
     # ===================================================================================
 }
 
-function check_liveness(){
+function check_liveness_ml(){
     pid=$(ps -aux | grep -i 'DMonaLisa_HOME=' | grep -v grep)
     if [[ -z $pid ]]
     then
@@ -121,13 +121,14 @@ function check_liveness(){
     fi
 }
 
-function start(){
+function start_ml(){
     # Check if there is an existing instance
-    check_liveness
+    check_liveness_ml
     if [[ $? == 0 ]]
     then
         echo "Existing instance of MonaLisa already running..." && exit 1
     fi
+    
     confDir=$1
     farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable     
 
@@ -194,7 +195,6 @@ function start(){
     for x in "${!monalisaLDAPconfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaLDAPconfiguration[$x]}" ; done
     echo ""
     
-    
     baseLogDir=${siteConfiguration[LOGDIR]}
     if [[ -z $baseLogDir ]]
     then
@@ -203,13 +203,34 @@ function start(){
 
     logDir="$baseLogDir/MonaLisa"
     envFile="$logDir/ml-env.sh"
-    mlConf="$confDir/ml.conf"
+    mlConf="$confDir/ml.properties"
     mlEnv="$confDir/ml.env"
     pidFile="$logDir/ml.pid"
     envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
     logFile="$logDir/ml-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
 
-    # Read MonaLaLisa config files
+    ceConf="$confDir/CE.properties"
+
+    if [[ ! -f "$confDir" ]]; 
+    then
+        mkdir $confDir
+    fi
+
+    # Write log directory to CE.properties file
+    if [[ -f "$ceConf" ]]; 
+    then
+        if  grep -q "LOGDIR" "$ceConf" 
+        then
+            sed -i "s|'^LOGDIR.*'|'LOGDIR=$baseLogDir'|" $destFile
+        else
+            echo "LOGDIR=$baseLogDir" >> "$ceConf"
+        fi
+    else
+        echo "LOGDIR=$baseLogDir" > "$ceConf"
+    fi
+
+
+    # Read MonaLisa config files
     if [[ -f "$mlConf" ]]
     then
         declare -A monalisaConfiguration
@@ -254,7 +275,7 @@ function start(){
     )
 }
 
-function stop(){
+function stop_ml(){
     echo "Stopping MonaLisa..."
     for pid in $(ps -aux | grep -i 'DMonaLisa_HOME=' | grep -v grep | awk '{print $2}')
     do
@@ -263,7 +284,7 @@ function stop(){
     done
 }
 
-function mlstatus() {
+function status_ml() {
     check_liveness
     if [[ $? == 0 ]]
     then 
@@ -275,7 +296,6 @@ function mlstatus() {
 }
 
 function run_monalisa() {
-
     if [[ $1 == "start" ]]
     then
         confDir=$2
@@ -283,19 +303,22 @@ function run_monalisa() {
         ldapPort=$4
         hostname=$5
         start $confDir $ldapHostname $ldapPort $hostname
+
     elif [[ $1 == "stop" ]]
     then
-        stop
+        stop_ml
+
     elif [[ $1 == "restart" ]]
     then
-        stop
-        start $confDir $ldapHostname $ldapPort $hostname
+        stop_ml
+        start_ml $confDir $ldapHostname $ldapPort $hostname
+
     elif [[ $1 == "mlstatus" ]]
     then
-        mlstatus
+        status_ml
+
+    else
+        echo "Command must be one of: 'start', 'stop', 'restart' or 'mlstatus'"
+        return 2
     fi
 }
-
-
-
-

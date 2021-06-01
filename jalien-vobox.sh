@@ -14,7 +14,7 @@ dir=${JALIEN_SCRIPTS:-/cvmfs/alice.cern.ch/scripts}
 source $dir/jalien-ce.sh
 source $dir/monalisa.sh
 
-cmds='start status stop restart mlstatus systemd'
+cmds='start status stop restart mlstatus'
 svcs='ce monalisa'
 confDir="${HOME}/.jalien"
 
