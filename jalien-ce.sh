@@ -10,34 +10,34 @@ function stop_ce() {
 }
 
 function check_liveness_ce(){
-    pid=$(ps -aux | grep -i 'alien.site.ComputingElement=' | grep -v grep)
-    if [[ -z $pid ]]
-    then
-        return 1
-    else
-        return 0
-    fi
+	pid=$(ps -aux | grep -i 'alien.site.ComputingElement=' | grep -v grep)
+	if [[ -z $pid ]]
+	then
+		return 1
+	else
+		return 0
+	fi
 }
 
 function status_ce() {
-    check_liveness_ce
-    exit_code=$?
-    if [[ $exit_code == 0 ]]
-    then 
-        echo -e "Status \t $exit_code \t CE Running"
-    elif [[ $exit_code == 1 ]]
-    then
-        echo -e "Status \t $exit_code \t CE Not Running"
-    fi
+	check_liveness_ce
+	exit_code=$?
+	if [[ $exit_code == 0 ]]
+	then 
+		echo -e "Status \t $exit_code \t CE Running"
+	elif [[ $exit_code == 1 ]]
+	then
+		echo -e "Status \t $exit_code \t CE Not Running"
+	fi
 }
 
 function start_ce(){
 	confDir=$1
-    className=$2
+	className=$2
 
-    ceConf="$confDir/CE.properties"
-    ceEnv="$confDir/CE.env"
-    envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
+	ceConf="$confDir/CE.properties"
+	ceEnv="$confDir/CE.env"
+	envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
 
 	# Read JAliEn config files
 	if [[ -f "$ceConf" ]]
@@ -56,9 +56,9 @@ function start_ce(){
 	fi
 
 	logDir=${jalienConfiguration[LOGDIR]-"${HOME}/ALICE/alien-logs"}/CE
-    envFile="$logDir/CE-env.sh"
-    pidFile="$logDir/CE.pid"
-    mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return; }
+	envFile="$logDir/CE-env.sh"
+	pidFile="$logDir/CE.pid"
+	mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return; }
 
 	# Reset the environment
 	> $envFile
@@ -87,29 +87,29 @@ function start_ce(){
 }
 
 function run_ce() {
-    command=$1
-    confDir=$2
-    className=alien.site.ComputingElement
+	command=$1
+	confDir=$2
+	className=alien.site.ComputingElement
 
-    if [[ $command = "start" ]]
-    then
+	if [[ $command = "start" ]]
+	then
 		start_ce $confDir $className
 
-    elif [[ $command = "stop" ]]
-    then
+	elif [[ $command = "stop" ]]
+	then
 		stop_ce $className
 
 	elif [[ $command = "restart" ]]
-    then
+	then
 		stop_ce $className
 		start_ce $confDir $className
 
-    elif [[ $command = "mlstatus" ]]
-    then
+	elif [[ $command = "mlstatus" ]]
+	then
 		status_ce
 
-    else
+	else
 	echo "Command must be one of: 'start', 'stop', 'restart' or 'mlstatus'"
 	return 2
-    fi
+	fi
 }
