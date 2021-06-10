@@ -4,36 +4,56 @@
 # v0.1
 # kwijethu@cern.ch
 
+ceClassName=alien.site.ComputingElement
+
 function stop_ce() {
-	echo "Stopping JAliEn CE"
-	pkill -f $1
+	echo "Stopping JAliEn CE..."
+	pkill -TERM -f $ceClassName
+	sleep 3
+
+	status_ce || return 0
+
+	echo "Killing JAliEn CE..."
+	pkill -KILL -f $ceClassName
+
+	! status_ce
 }
 
 function check_liveness_ce(){
-	pid=$(ps -aux | grep -i 'alien.site.ComputingElement=' | grep -v grep)
-	if [[ -z $pid ]]
+	if ps uxwww | grep "[ ]$ceClassName" > /dev/null
 	then
-		return 1
-	else
 		return 0
+	else
+		return 1
 	fi
 }
 
 function status_ce() {
+	cmd=$1
+
 	check_liveness_ce
 	exit_code=$?
-	if [[ $exit_code == 0 ]]
-	then 
-		echo -e "Status \t $exit_code \t CE Running"
-	elif [[ $exit_code == 1 ]]
+
+	[[ $exit_code == 0 ]] && not= || not=' Not'
+
+	if [[ "$cmd" == mlstatus ]]
 	then
-		echo -e "Status \t $exit_code \t CE Not Running"
+		echo -e "Status\t$exit_code\tCE$not Running"
+	else
+		echo -e "CE$not Running"
 	fi
+
+	return $exit_code
 }
 
 function start_ce(){
 	confDir=$1
-	className=$2
+	
+	if check_liveness_ce
+	then
+		echo "JAliEn CE already running"
+		return 0
+	fi
 
 	ceConf="$confDir/CE.properties"
 	ceEnv="$confDir/CE.env"
@@ -58,7 +78,7 @@ function start_ce(){
 	logDir=${jalienConfiguration[LOGDIR]-"${HOME}/ALICE/alien-logs"}/CE
 	envFile="$logDir/CE-env.sh"
 	pidFile="$logDir/CE.pid"
-	mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return; }
+	mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return 1; }
 
 	# Reset the environment
 	> $envFile
@@ -77,39 +97,41 @@ function start_ce(){
 
 	logFile="$logDir/CE-jvm-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
 
-	echo "Starting JAliEn CE.... Please check $logFile for logs"
+	echo -e "Starting JAliEn CE...  JVM log:\n$logFile"
 	(
 		# In a subshell, to get the process detached from the parent
 		cd $logDir
-		nohup jalien $className > "$logFile" 2>&1 < /dev/null &
+		nohup jalien $ceClassName > "$logFile" 2>&1 < /dev/null &
 		echo $! > "$pidFile"
 	)
+
+	sleep 3
+	status_ce
 }
 
 function run_ce() {
 	command=$1
 	confDir=$2
-	className=alien.site.ComputingElement
 
 	if [[ $command = "start" ]]
 	then
-		start_ce $confDir $className
+		start_ce $confDir
 
 	elif [[ $command = "stop" ]]
 	then
-		stop_ce $className
+		stop_ce
 
 	elif [[ $command = "restart" ]]
 	then
-		stop_ce $className
-		start_ce $confDir $className
+		stop_ce
+		start_ce $confDir
 
-	elif [[ $command = "mlstatus" ]]
+	elif [[ $command =~ "status" ]]
 	then
-		status_ce
+		status_ce $command
 
 	else
-	echo "Command must be one of: 'start', 'stop', 'restart' or 'mlstatus'"
-	return 2
+		echo "Command must be one of: 'start', 'stop', 'restart' or '(ml)status'"
+		return 2
 	fi
 }
