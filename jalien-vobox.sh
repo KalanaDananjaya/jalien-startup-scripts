@@ -9,7 +9,7 @@ ldapHostname="alice-ldap.cern.ch"
 ldapPort="8389"
 hostname=`hostname -f`
 
-dir=${JALIEN_SCRIPTS:-/cvmfs/alice.cern.ch/scripts}
+dir=`dirname -- "$0"`
 
 source $dir/jalien-ce.sh
 source $dir/monalisa.sh
