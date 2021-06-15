@@ -9,7 +9,7 @@ ldapHostname="alice-ldap.cern.ch"
 ldapPort="8389"
 hostname=`hostname -f`
 
-dir=`dirname -- "$0"`
+dir="$(cd `dirname -- "$0"` &>/dev/null && pwd)"
 
 source $dir/jalien-ce.sh
 source $dir/monalisa.sh

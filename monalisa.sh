@@ -69,7 +69,7 @@ function setup() {
 
 	add+=(${siteConfiguration[MONALISA_ADDMODULES_LIST]}); #TODO : find a site with "addModules” key and test
 	add+=("^monLogTail{Cluster=AliEnServicesLogs,Node=CE,command=tail -n 15 -F $baseLogDir/CE/alien.log 2>&1}%3")
-	add+=("*AliEnServicesStatus{monStatusCmd, localhost, \"logDir=$baseLogDir `dirname $0`/jalien-vobox CE mlstatus,timeout=800\"}%900")
+	add+=("*AliEnServicesStatus{monStatusCmd, localhost, \"logDir=$baseLogDir $(cd `dirname -- "$0"` &>/dev/null && pwd)/jalien-vobox.sh mlstatus ce,timeout=800\"}%900")
 
 	template "$farmHome/Service/myFarm/myFarm.conf" "$logDir/myFarm/myFarm.conf"
 
@@ -273,7 +273,7 @@ function start_ml(){
 	(
 		# In a subshell, to get the process detached from the parent
 		cd $logDir
-		nohup $farmHome/Service/CMD/ML_SER start > "$logFile" 2>&1 < /dev/null &
+		$farmHome/Service/CMD/ML_SER start > "$logFile" 2>&1 < /dev/null &
 	)
 }
 
@@ -282,8 +282,13 @@ function stop_ml(){
 	for pid in $(pgrep -u `id -u` -f -- '-DMonaLisa_HOME=')
 	do
 		# request children to shutdown
-		kill -s HUP ${pid} 2>/dev/null
-		kill -s TERM ${pid} 2>/dev/null
+		kill -s HUP $pid &>/dev/null
+		sleep 1 ; echo -n "."
+		kill -s HUP $pid &>/dev/null
+		sleep 1 ; echo -n "."
+		kill -s TERM $pid &>/dev/null
+		sleep 2
+#		kill -9 $pid &>/dev/null
 	done
 }
 
@@ -292,10 +297,10 @@ function status_ml() {
 	exit_code=$?
 	if [[ $exit_code == 0 ]]
 	then 
-		echo -e "Status \t $exit_code \t MonaLisa Running"
+		echo -e "Status\t$exit_code\tMessage\tMonaLisa Running"
 	elif [[ $exit_code == 1 ]]
 	then
-		echo -e "Status \t $exit_code \t MonaLisa Not Running"
+		echo -e "Status\t$exit_code\tMessage\tMonaLisa Not Running"
 	fi
 }
 

@@ -38,7 +38,7 @@ function status_ce() {
 
 	if [[ "$cmd" == mlstatus ]]
 	then
-		echo -e "Status\t$exit_code\tCE$not Running"
+		echo -e "Status\t$exit_code\tMessage\tCE$not Running"
 	else
 		echo -e "CE$not Running"
 	fi
