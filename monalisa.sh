@@ -69,7 +69,7 @@ function setup() {
 
 	add+=(${siteConfiguration[MONALISA_ADDMODULES_LIST]}); #TODO : find a site with "addModules” key and test
 	add+=("^monLogTail{Cluster=AliEnServicesLogs,Node=CE,command=tail -n 15 -F $baseLogDir/CE/alien.log 2>&1}%3")
-	add+=("*AliEnServicesStatus{monStatusCmd, localhost, \"logDir=$baseLogDir `dirname $0`/jalien-vobox CE mlstatus,timeout=800\"}%900")
+	add+=("*AliEnServicesStatus{monStatusCmd, localhost, \"logDir=$baseLogDir $(cd `dirname -- "$0"` &>/dev/null && pwd)/jalien-vobox.sh mlstatus ce,timeout=800\"}%900")
 
 	template "$farmHome/Service/myFarm/myFarm.conf" "$logDir/myFarm/myFarm.conf"
 
@@ -101,6 +101,7 @@ function setup() {
 	changes["^FARM_NAME.*"]="FARM_NAME=\"${monalisaLDAPconfiguration[NAME]}\""
 	changes["^FARM_HOME.*"]="FARM_HOME=\"$logDir/myFarm\""
 	changes["^MONALISA_USER.*"]="MONALISA_USER=\"$(id -u -n)\""
+	changes["^MonaLisa_HOME.*"]="$MonaLisa_HOME"
 
 	template "$farmHome/Service/CMD/ml_env" "$logDir/myFarm/ml_env"
 
@@ -112,7 +113,7 @@ function setup() {
 }
 
 function check_liveness_ml(){
-	pid=$(ps -aux | grep -i 'DMonaLisa_HOME=' | grep -v grep)
+	pid=$(pgrep -n -u `id -u` -f -- "-DMonaLisa_HOME=")
 	if [[ -z $pid ]]
 	then
 		return 1
@@ -130,7 +131,7 @@ function start_ml(){
 	fi
 	
 	confDir=$1
-	farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable	 
+	farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable
 
 	if [[ -z $farmHome ]]
 	then
@@ -149,8 +150,8 @@ function start_ml(){
 	#Ignore empty lines and create an associative array from ldap configuration
 	if [[ ! -z $line ]]
 	then
-		key=$(echo $line| cut -d ":" -f 1 | xargs )
-		val=$(echo $line | cut -d ":" -f 2- | xargs)
+		key=$(echo $line| cut -d ":" -f 1 | xargs 2>/dev/null)
+		val=$(echo $line | cut -d ":" -f 2- | xargs 2>/dev/null)
 		val=$(envsubst <<< $val)
 		siteConfiguration[${key^^}]=$val
 	fi
@@ -173,11 +174,11 @@ function start_ml(){
 		# Create a new array for addProperties
 		if [[ $line = addProperties* ]];
 		then
-			val=$(echo $line | cut -d ":" -f 2- | xargs)
+			val=$(echo $line | cut -d ":" -f 2- | xargs 2>/dev/null)
 			monalisaProperties+=($val)
 		else
-			key=$(echo $line | cut -d ":" -f 1 | xargs)
-			val=$(echo $line | cut -d ":" -f 2- | xargs)
+			key=$(echo $line | cut -d ":" -f 1 | xargs 2>/dev/null)
+			val=$(echo $line | cut -d ":" -f 2- | xargs 2>/dev/null)
 			monalisaLDAPconfiguration[${key^^}]=$val
 		fi
 	fi
@@ -198,14 +199,14 @@ function start_ml(){
 	baseLogDir=${siteConfiguration[LOGDIR]}
 	if [[ -z $baseLogDir ]]
 	then
-		echo "LDAP Configuration for Log directory not found. Please set it up and try again." && exit 1
+		baseLogDir="$HOME/ALICE/alien-logs"
+		echo "LDAP doesn't define a particular log location, using the default ($baseLogDir)"
 	fi
 
 	logDir="$baseLogDir/MonaLisa"
 	envFile="$logDir/ml-env.sh"
 	mlConf="$confDir/ml.properties"
 	mlEnv="$confDir/ml.env"
-	pidFile="$logDir/ml.pid"
 	envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
 	logFile="$logDir/ml-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
 
@@ -238,8 +239,8 @@ function start_ml(){
 		do
 		if [[ ! $line = \#* ]] && [[ ! -z $line ]]
 			then
-			key=$(echo $line| cut -d "=" -f 1 | xargs )
-			val=$(echo $line | cut -d "=" -f 2- | xargs)
+			key=$(echo $line| cut -d "=" -f 1 | xargs 2>/dev/null)
+			val=$(echo $line | cut -d "=" -f 2- | xargs 2>/dev/null)
 			monalisaConfiguration[${key^^}]=$val
 		fi
 		done <<< "$mlConf"
@@ -256,7 +257,9 @@ function start_ml(){
 	then
 		envCommand="$envCommand/${monalisaConfiguration[MonaLisa]}"
 	fi
+
 	$envCommand >> $envFile
+
 	source $envFile
 
 	mkdir -p $logDir || { echo "Unable to create log directory at $logDir or log directory not found in LDAP configuration" && return; }
@@ -264,23 +267,28 @@ function start_ml(){
 	echo "Started configuring MonAlisa..."
 	echo ""
 
-	setup $farmHome $logDir	
+	setup $farmHome $logDir
 
 	echo "Starting MonAlisa.... Please check $logFile for logs"
 	(
 		# In a subshell, to get the process detached from the parent
 		cd $logDir
-		nohup $farmHome/Service/CMD/ML_SER start > "$logFile" 2>&1 < /dev/null &
-		echo $! > "$pidFile"
+		$farmHome/Service/CMD/ML_SER start > "$logFile" 2>&1 < /dev/null &
 	)
 }
 
 function stop_ml(){
 	echo "Stopping MonaLisa..."
-	for pid in $(ps -aux | grep -i 'DMonaLisa_HOME=' | grep -v grep | awk '{print $2}')
+	for pid in $(pgrep -u `id -u` -f -- '-DMonaLisa_HOME=')
 	do
 		# request children to shutdown
-		kill -s TERM ${pid} 2>/dev/null 
+		kill -s HUP $pid &>/dev/null
+		sleep 1 ; echo -n "."
+		kill -s HUP $pid &>/dev/null
+		sleep 1 ; echo -n "."
+		kill -s TERM $pid &>/dev/null
+		sleep 2
+#		kill -9 $pid &>/dev/null
 	done
 }
 
@@ -289,10 +297,10 @@ function status_ml() {
 	exit_code=$?
 	if [[ $exit_code == 0 ]]
 	then 
-		echo -e "Status \t $exit_code \t MonaLisa Running"
+		echo -e "Status\t$exit_code\tMessage\tMonaLisa Running"
 	elif [[ $exit_code == 1 ]]
 	then
-		echo -e "Status \t $exit_code \t MonaLisa Not Running"
+		echo -e "Status\t$exit_code\tMessage\tMonaLisa Not Running"
 	fi
 }
 
