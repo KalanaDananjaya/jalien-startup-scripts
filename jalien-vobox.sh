@@ -2,7 +2,6 @@
 
 # Starting script for VoBox
 # v0.1
-# kwijethu@cern.ch
 
 
 ldapHostname="alice-ldap.cern.ch"
@@ -16,7 +15,7 @@ source $dir/monalisa.sh
 
 cmds='start status stop restart mlstatus'
 svcs='ce monalisa'
-confDir="${HOME}/.jalien"
+confDir="${HOME}/.jalien/config"
 
 usage()
 {

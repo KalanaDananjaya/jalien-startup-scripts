@@ -1,9 +1,7 @@
 #!/bin/bash
 
-# Starting script for ML
+# Starting script for MonaLisa
 # v0.1
-# kwijethu@cern.ch
-
 
 function template(){
 
@@ -101,7 +99,7 @@ function setup() {
 	changes["^FARM_NAME.*"]="FARM_NAME=\"${monalisaLDAPconfiguration[NAME]}\""
 	changes["^FARM_HOME.*"]="FARM_HOME=\"$logDir/myFarm\""
 	changes["^MONALISA_USER.*"]="MONALISA_USER=\"$(id -u -n)\""
-	changes["^MonaLisa_HOME.*"]="$MonaLisa_HOME"
+	changes["^MonaLisa_HOME.*"]="MonaLisa_HOME=\"$MonaLisa_HOME\""
 
 	template "$farmHome/Service/CMD/ml_env" "$logDir/myFarm/ml_env"
 
@@ -130,14 +128,8 @@ function start_ml(){
 		echo "Existing instance of MonaLisa already running..." && exit 1
 	fi
 	
+	# ======================== Config generation from LDAP  ========================
 	confDir=$1
-	farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable
-
-	if [[ -z $farmHome ]]
-	then
-		echo "Please point MonaLisa variable to the MonaLisa package location by setting the environment variable MonaLisa_HOME" && exit 1
-	fi
-	# ======================== Start templating config files  ========================
 	ldapHostname=$2
 	ldapPort=$3
 	hostname=$4
@@ -205,45 +197,37 @@ function start_ml(){
 
 	logDir="$baseLogDir/MonaLisa"
 	envFile="$logDir/ml-env.sh"
-	mlConf="$confDir/ml.properties"
+	commonConf="$confDir/version.properties"
 	mlEnv="$confDir/ml.env"
 	envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
 	logFile="$logDir/ml-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
 
-	ceConf="$confDir/CE.properties"
-
-	if [[ ! -f "$confDir" ]]; 
+	# Write log directory to version.properties file
+	if [[ -f "$commonConf" ]]; 
 	then
-		mkdir $confDir
-	fi
-
-	# Write log directory to CE.properties file
-	if [[ -f "$ceConf" ]]; 
-	then
-		if  grep -q "LOGDIR" "$ceConf" 
+		if  grep -q "LOGDIR" "$commonConf" 
 		then
-			sed -i "s|'^LOGDIR.*'|'LOGDIR=$baseLogDir'|" $destFile
+			sed -i "s|'^LOGDIR.*'|'LOGDIR=$baseLogDir'|" $commonConf
 		else
-			echo "LOGDIR=$baseLogDir" >> "$ceConf"
+			echo "LOGDIR=$baseLogDir" >> "$commonConf"
 		fi
 	else
-		echo "LOGDIR=$baseLogDir" > "$ceConf"
+		echo "LOGDIR=$baseLogDir" > "$commonConf"
 	fi
 
-
 	# Read MonaLisa config files
-	if [[ -f "$mlConf" ]]
+	if [[ -f "$commonConf" ]]
 	then
-		declare -A monalisaConfiguration
+		declare -A commonConfiguration
 		while IFS= read -r line
 		do
 		if [[ ! $line = \#* ]] && [[ ! -z $line ]]
 			then
 			key=$(echo $line| cut -d "=" -f 1 | xargs 2>/dev/null)
 			val=$(echo $line | cut -d "=" -f 2- | xargs 2>/dev/null)
-			monalisaConfiguration[${key^^}]=$val
+			commonConfiguration[${key^^}]=$val
 		fi
-		done <<< "$mlConf"
+		done <<< "$commonConf"
 	fi
 
 	# Reset the environment
@@ -252,24 +236,33 @@ function start_ml(){
 	# Bootstrap the environment e.g. with the correct X509_USER_PROXY
 	[[ -f "$mlEnv" ]] && cat "$mlEnv" >> $envFile
 
-	# Check for MonAlisa version 
-	if [[ -n "${monalisaConfiguration[MonaLisa]}" ]]
+	# Check for MonaLisa version 
+	if [[ -n "${commonConfiguration[MonaLisa]}" ]]
 	then
-		envCommand="$envCommand/${monalisaConfiguration[MonaLisa]}"
+		envCommand="$envCommand/${commonConfiguration[MonaLisa]}"
 	fi
 
 	$envCommand >> $envFile
 
 	source $envFile
 
+	farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable or exported using ml.env file
+
+	if [[ -z $farmHome ]]
+	then
+		echo "Please point MonaLisa variable to the MonaLisa package location by setting the environment variable MonaLisa_HOME" && exit 1
+	fi
+
+	# ======================== Start templating config files  ========================
+
 	mkdir -p $logDir || { echo "Unable to create log directory at $logDir or log directory not found in LDAP configuration" && return; }
 	echo "MonaLisa Log Directory: $logDir"
-	echo "Started configuring MonAlisa..."
+	echo "Started configuring MonaLisa..."
 	echo ""
 
 	setup $farmHome $logDir
 
-	echo "Starting MonAlisa.... Please check $logFile for logs"
+	echo "Starting MonaLisa.... Please check $logFile for logs"
 	(
 		# In a subshell, to get the process detached from the parent
 		cd $logDir
@@ -293,19 +286,26 @@ function stop_ml(){
 }
 
 function status_ml() {
+	cmd=$1
+
 	check_liveness_ml
 	exit_code=$?
-	if [[ $exit_code == 0 ]]
-	then 
-		echo -e "Status\t$exit_code\tMessage\tMonaLisa Running"
-	elif [[ $exit_code == 1 ]]
+
+	[[ $exit_code == 0 ]] && not= || not=' Not'
+
+	if [[ "$cmd" == mlstatus ]]
 	then
-		echo -e "Status\t$exit_code\tMessage\tMonaLisa Not Running"
+		echo -e "Status\t$exit_code\tMessage\tMonaLisa$not Running"
+	else
+		echo -e "MonaLisa$not Running"
 	fi
+
 }
 
 function run_monalisa() {
-	if [[ $1 == "start" ]]
+	command=$1
+
+	if [[ $command = "start" ]]
 	then
 		confDir=$2
 		ldapHostname=$3
@@ -313,18 +313,18 @@ function run_monalisa() {
 		hostname=$5
 		start_ml $confDir $ldapHostname $ldapPort $hostname
 
-	elif [[ $1 == "stop" ]]
+	elif [[ $command = "stop" ]]
 	then
 		stop_ml
 
-	elif [[ $1 == "restart" ]]
+	elif [[ $command = "restart" ]]
 	then
 		stop_ml
 		start_ml $confDir $ldapHostname $ldapPort $hostname
 
-	elif [[ $1 == "mlstatus" ]]
+	elif [[ $command =~ "mlstatus" ]]
 	then
-		status_ml
+		status_ml $command
 
 	else
 	    echo "Command must be one of: 'start', 'stop', 'restart' or 'mlstatus'"

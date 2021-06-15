@@ -2,7 +2,6 @@
 
 # Starting script for CE
 # v0.1
-# kwijethu@cern.ch
 
 ceClassName=alien.site.ComputingElement
 
@@ -55,27 +54,27 @@ function start_ce(){
 		return 0
 	fi
 
-	ceConf="$confDir/CE.properties"
+	commonConf="$confDir/version.properties"
 	ceEnv="$confDir/CE.env"
 	envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
 
 	# Read JAliEn config files
-	if [[ -f "$ceConf" ]]
+	if [[ -f "$commonConf" ]]
 	then
-		declare -A jalienConfiguration
+		declare -A commonConfiguration
 
 		while IFS= read -r line
 		do
 		if [[ ! $line = \#* ]] && [[ ! -z $line ]]
 		then
-			key=$(echo $line | cut -d "=" -f 1  | xargs)
-			val=$(echo $line | cut -d "=" -f 2- | xargs)
-			jalienConfiguration[${key^^}]=$val
+			key=$(echo $line | cut -d "=" -f 1  | xargs 2>/dev/null)
+			val=$(echo $line | cut -d "=" -f 2- | xargs 2>/dev/null)
+			commonConfiguration[${key^^}]=$val
 		fi
-		done < "$ceConf"
+		done < "$commonConf"
 	fi
 
-	logDir=${jalienConfiguration[LOGDIR]-"${HOME}/ALICE/alien-logs"}/CE
+	logDir=${commonConfiguration[LOGDIR]-"${HOME}/ALICE/alien-logs"}/CE
 	envFile="$logDir/CE-env.sh"
 	pidFile="$logDir/CE.pid"
 	mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return 1; }
@@ -87,9 +86,9 @@ function start_ce(){
 	[[ -f "$ceEnv" ]] && cat "$ceEnv" >> $envFile
 
 	# Check for JAliEn version
-	if [[ -n "${jalienConfiguration[JALIEN]}" ]]
+	if [[ -n "${commonConfiguration[JALIEN]}" ]]
 	then
-		envCommand="$envCommand/${jalienConfiguration[JALIEN]}"
+		envCommand="$envCommand/${commonConfiguration[JALIEN]}"
 	fi
 
 	$envCommand >> $envFile
