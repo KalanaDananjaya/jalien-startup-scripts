@@ -236,7 +236,7 @@ function start_ml(){
 	# Bootstrap the environment e.g. with the correct X509_USER_PROXY
 	[[ -f "$mlEnv" ]] && cat "$mlEnv" >> $envFile
 
-	# Check for MonaLisa version 
+	# If a specific MonaLisa package is declared use that package 
 	if [[ -n "${commonConfiguration[MonaLisa]}" ]]
 	then
 		envCommand="$envCommand/${commonConfiguration[MonaLisa]}"
@@ -244,9 +244,16 @@ function start_ml(){
 
 	$envCommand >> $envFile
 
-	source $envFile
+	# If a custom MonaLisa package is declared use that package as MonaLisa_HOME
+	if [[ -n "${commonConfiguration[MonaLisa_HOME]}" ]]
+	then
+		envCommand="$envCommand/${commonConfiguration[MonaLisa_HOME]}"
+		"export MonaLisa_HOME=${commonConfiguration[MonaLisa_HOME]};" >> $envFile
+	fi
 
-	farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable or exported using ml.env file
+	source $envFile 
+
+	farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable or defined in version.properties file
 
 	if [[ -z $farmHome ]]
 	then

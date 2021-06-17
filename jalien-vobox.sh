@@ -3,7 +3,6 @@
 # Starting script for VoBox
 # v0.1
 
-
 ldapHostname="alice-ldap.cern.ch"
 ldapPort="8389"
 hostname=`hostname -f`
@@ -51,7 +50,7 @@ do
 
 	elif [[ $svc = "ce" ]]
 	then
-		run_ce $cmd $confDir
+		run_ce $cmd $confDir $ldapHostname $ldapPort $hostname
     
 	else 
 		usage

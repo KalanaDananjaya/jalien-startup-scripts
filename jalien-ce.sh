@@ -47,13 +47,39 @@ function status_ce() {
 
 function start_ce(){
 	confDir=$1
-	
+	ldapHostname=$2
+	ldapPort=$3
+	hostname=$4
+
 	if check_liveness_ce
 	then
 		echo "JAliEn CE already running"
 		return 0
 	fi
 
+	# Obtain site related configurations from LDAP
+	siteLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch" 2> /dev/null )
+	declare -A siteConfiguration
+	while IFS= read -r line
+	do
+	#Ignore empty lines and create an associative array from ldap configuration
+	if [[ ! -z $line ]]
+	then
+		key=$(echo $line| cut -d ":" -f 1 | xargs 2>/dev/null)
+		val=$(echo $line | cut -d ":" -f 2- | xargs 2>/dev/null)
+		val=$(envsubst <<< $val)
+		siteConfiguration[${key^^}]=$val
+	fi
+	done <<< "$siteLDAPQuery"
+	
+	baseLogDir=${siteConfiguration[LOGDIR]}
+	if [[ -z $baseLogDir ]]
+	then
+		baseLogDir="$HOME/ALICE/alien-logs"
+		echo "LDAP doesn't define a particular log location, using the default ($baseLogDir)"
+	fi
+	
+	logDir="$baseLogDir/CE"
 	commonConf="$confDir/version.properties"
 	ceEnv="$confDir/CE.env"
 	envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
@@ -74,7 +100,6 @@ function start_ce(){
 		done < "$commonConf"
 	fi
 
-	logDir=${commonConfiguration[LOGDIR]-"${HOME}/ALICE/alien-logs"}/CE
 	envFile="$logDir/CE-env.sh"
 	pidFile="$logDir/CE.pid"
 	mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return 1; }
