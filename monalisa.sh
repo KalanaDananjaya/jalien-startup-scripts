@@ -227,8 +227,12 @@ function start_ml(){
 			val=$(echo $line | cut -d "=" -f 2- | xargs 2>/dev/null)
 			commonConfiguration[${key^^}]=$val
 		fi
-		done <<< "$commonConf"
+		done < "$commonConf"
 	fi
+
+	echo "===================== MonaLisa Local Config ==================="
+	for x in "${!commonConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}" ; done
+	echo ""
 
 	# Reset the environment
 	> $envFile
@@ -237,18 +241,17 @@ function start_ml(){
 	[[ -f "$mlEnv" ]] && cat "$mlEnv" >> $envFile
 
 	# If a specific MonaLisa package is declared use that package 
-	if [[ -n "${commonConfiguration[MonaLisa]}" ]]
+	if [[ -n "${commonConfiguration[MONALISA]}" ]]
 	then
-		envCommand="$envCommand/${commonConfiguration[MonaLisa]}"
+		envCommand="$envCommand/${commonConfiguration[MONALISA]}"
 	fi
 
 	$envCommand >> $envFile
 
 	# If a custom MonaLisa package is declared use that package as MonaLisa_HOME
-	if [[ -n "${commonConfiguration[MonaLisa_HOME]}" ]]
+	if [[ -n "${commonConfiguration[MONALISA_HOME]}" ]]
 	then
-		envCommand="$envCommand/${commonConfiguration[MonaLisa_HOME]}"
-		"export MonaLisa_HOME=${commonConfiguration[MonaLisa_HOME]};" >> $envFile
+		echo "export MonaLisa_HOME=${commonConfiguration[MONALISA_HOME]};" >> $envFile
 	fi
 
 	source $envFile 
