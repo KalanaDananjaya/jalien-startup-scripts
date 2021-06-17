@@ -135,11 +135,14 @@ function start_ce(){
 
 function run_ce() {
 	command=$1
-	confDir=$2
 
 	if [[ $command = "start" ]]
 	then
-		start_ce $confDir
+		confDir=$2
+		ldapHostname=$3
+		ldapPort=$4
+		hostname=$5
+		start_ce $confDir $ldapHostname $ldapPort $hostname
 
 	elif [[ $command = "stop" ]]
 	then
@@ -148,7 +151,7 @@ function run_ce() {
 	elif [[ $command = "restart" ]]
 	then
 		stop_ce
-		start_ce $confDir
+		start_ce $confDir $ldapHostname $ldapPort $hostname
 
 	elif [[ $command =~ "status" ]]
 	then
