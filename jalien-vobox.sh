@@ -14,7 +14,7 @@ source $dir/monalisa.sh
 
 cmds='start status stop restart mlstatus'
 svcs='ce monalisa'
-confDir="${HOME}/.jalien/config"
+confDir="${HOME}/.alien/config"
 
 usage()
 {

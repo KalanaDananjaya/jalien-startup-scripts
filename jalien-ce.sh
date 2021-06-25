@@ -50,6 +50,8 @@ function start_ce(){
 	ldapHostname=$2
 	ldapPort=$3
 	hostname=$4
+	nl='
+	'
 
 	if check_liveness_ce
 	then
@@ -58,21 +60,34 @@ function start_ce(){
 	fi
 
 	# Obtain site related configurations from LDAP
-	siteLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch" 2> /dev/null )
+	ldapBase="ou=Sites,o=alice,dc=cern,dc=ch"
+	ldapFilter="(&(objectClass=AliEnHostConfig)(host=$hostname))"
+
+	siteLDAPQuery=$(
+		ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b $ldapBase "$ldapFilter" |
+		perl -p00e 's/\n //g' | envsubst
+	)
+
+	
+
 	declare -A siteConfiguration
 	while IFS= read -r line
 	do
-	#Ignore empty lines and create an associative array from ldap configuration
+	#Ignore empty lines and create an associative array from LDAP configuration
 	if [[ ! -z $line ]]
 	then
-		key=$(echo $line| cut -d ":" -f 1 | xargs 2>/dev/null)
-		val=$(echo $line | cut -d ":" -f 2- | xargs 2>/dev/null)
-		val=$(envsubst <<< $val)
-		siteConfiguration[${key^^}]=$val
+		key=$(echo "$line"| cut -d ":" -f 1 )
+		val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
+
+		key=${key^^}
+		prev=${siteConfiguration[$key]}
+		prev=${prev:+$prev$nl}
+
+		siteConfiguration[$key]=$prev$val
 	fi
 	done <<< "$siteLDAPQuery"
 	
-	baseLogDir=${siteConfiguration[LOGDIR]}
+	baseLogDir=$(echo "${siteConfiguration[LOGDIR]}" | envsubst)
 	if [[ -z $baseLogDir ]]
 	then
 		baseLogDir="$HOME/ALICE/alien-logs"
@@ -93,12 +108,21 @@ function start_ce(){
 		do
 		if [[ ! $line = \#* ]] && [[ ! -z $line ]]
 		then
-			key=$(echo $line | cut -d "=" -f 1  | xargs 2>/dev/null)
-			val=$(echo $line | cut -d "=" -f 2- | xargs 2>/dev/null)
-			commonConfiguration[${key^^}]=$val
+			key=$(echo "$line"| cut -d "=" -f 1 )
+			val=$(echo "$line" | cut -d "=" -f 2- ) 
+
+			key=${key^^}
+			prev=${commonConfiguration[$key]}
+			prev=${prev:+$prev$nl}
+
+			commonConfiguration[$key]=$prev$val
 		fi
 		done < "$commonConf"
 	fi
+
+	echo "===================== Local Configuration ==================="
+	for x in "${!commonConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}" ; done
+	echo ""
 
 	envFile="$logDir/CE-env.sh"
 	pidFile="$logDir/CE.pid"
@@ -117,13 +141,14 @@ function start_ce(){
 	fi
 
 	$envCommand >> $envFile
-	source $envFile
+	
 
 	logFile="$logDir/CE-jvm-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
 
 	echo -e "Starting JAliEn CE...  JVM log:\n$logFile"
 	(
 		# In a subshell, to get the process detached from the parent
+		source $envFile
 		cd $logDir
 		nohup jalien $ceClassName > "$logFile" 2>&1 < /dev/null &
 		echo $! > "$pidFile"

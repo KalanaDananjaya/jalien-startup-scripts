@@ -65,7 +65,8 @@ function setup() {
 	# ===================================================================================
 	# myFarm.conf 
 
-	add+=(${siteConfiguration[MONALISA_ADDMODULES_LIST]}); #TODO : find a site with "addModules” key and test
+	# Convert multi-valued attribute to array
+	while IFS= read -r line ; do add+=($line); done <<< "${siteConfiguration[MONALISA_ADDMODULES_LIST]}"
 	add+=("^monLogTail{Cluster=AliEnServicesLogs,Node=CE,command=tail -n 15 -F $baseLogDir/CE/alien.log 2>&1}%3")
 	add+=("*AliEnServicesStatus{monStatusCmd, localhost, \"logDir=$baseLogDir $(cd `dirname -- "$0"` &>/dev/null && pwd)/jalien-vobox.sh mlstatus ce,timeout=800\"}%900")
 
@@ -75,10 +76,9 @@ function setup() {
 	# ml.properties
 
 	declare -Ag changes
-	for key in "${monalisaProperties[@]}"
-	do 
-		add+=($key)
-	done
+
+	# Convert multi-valued attribute to array
+	while IFS= read -r line ; do add+=($line); done <<< "${monalisaLDAPconfiguration[ADDPROPERTIES]}"
 
 	location=${monalisaLDAPconfiguration[LOCATION]-${monalisaLDAPconfiguration[SITE_LOCATION]}} || ""
 	country=${monalisaLDAPconfiguration[COUNTRY]-${monalisaLDAPconfiguration[SITE_COUNTRY]}} || ""
@@ -133,6 +133,8 @@ function start_ml(){
 	ldapHostname=$2
 	ldapPort=$3
 	hostname=$4
+	nl='
+	'
 	
 	# Obtain site related configurations from LDAP
 	siteLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch" 2> /dev/null )
@@ -142,10 +144,14 @@ function start_ml(){
 	#Ignore empty lines and create an associative array from ldap configuration
 	if [[ ! -z $line ]]
 	then
-		key=$(echo $line| cut -d ":" -f 1 | xargs 2>/dev/null)
-		val=$(echo $line | cut -d ":" -f 2- | xargs 2>/dev/null)
-		val=$(envsubst <<< $val)
-		siteConfiguration[${key^^}]=$val
+		key=$(echo "$line"| cut -d ":" -f 1 )
+		val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
+
+		key=${key^^}
+		prev=${siteConfiguration[$key]}
+		prev=${prev:+$prev$nl}
+
+		siteConfiguration[$key]=$prev$val
 	fi
 	done <<< "$siteLDAPQuery"
 
@@ -155,24 +161,27 @@ function start_ml(){
 	then
 		echo "LDAP Configuration for MonaLisa configuration not found. Please set it up and try again." && exit 1
 	fi
-	monalisaLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "name=$siteName,ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch" 2> /dev/null)
+
+	ldapBase="ou=MonaLisa,ou=Services,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch"
+	ldapFilter="(&(objectClass=AliEnMonaLisa)(name=$siteName))"
+	monalisaLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b $ldapBase "$ldapFilter" |
+			perl -p00e 's/\n //g' | envsubst
+        )
 
 	declare -A monalisaLDAPconfiguration
-	monalisaProperties=()
 	while IFS= read -r line
 	do
 	if [[ ! -z $line ]]
 		then
-		# Create a new array for addProperties
-		if [[ $line = addProperties* ]];
-		then
-			val=$(echo $line | cut -d ":" -f 2- | xargs 2>/dev/null)
-			monalisaProperties+=($val)
-		else
-			key=$(echo $line | cut -d ":" -f 1 | xargs 2>/dev/null)
-			val=$(echo $line | cut -d ":" -f 2- | xargs 2>/dev/null)
-			monalisaLDAPconfiguration[${key^^}]=$val
-		fi
+
+		key=$(echo "$line" | cut -d ":" -f 1)
+    	val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
+
+		key=${key^^}
+		prev=${monalisaLDAPconfiguration[$key]}
+		prev=${prev:+$prev$nl}
+
+		monalisaLDAPconfiguration[$key]=$prev$val
 	fi
 	done <<< "$monalisaLDAPQuery"
 
@@ -180,15 +189,11 @@ function start_ml(){
 	for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" ; done
 	echo ""
 
-	echo "===================== MonaLisa Properties ==================="
-	for x in "${monalisaProperties[@]}"; do printf  "$x\n"  ; done
-	echo ""
-
 	echo "===================== MonaLisa Config ==================="
 	for x in "${!monalisaLDAPconfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaLDAPconfiguration[$x]}" ; done
 	echo ""
 	
-	baseLogDir=${siteConfiguration[LOGDIR]}
+	baseLogDir=$(echo "${siteConfiguration[LOGDIR]}" | envsubst)
 	if [[ -z $baseLogDir ]]
 	then
 		baseLogDir="$HOME/ALICE/alien-logs"
@@ -202,18 +207,6 @@ function start_ml(){
 	envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
 	logFile="$logDir/ml-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
 
-	# Write log directory to version.properties file
-	if [[ -f "$commonConf" ]]; 
-	then
-		if  grep -q "LOGDIR" "$commonConf" 
-		then
-			sed -i "s|'^LOGDIR.*'|'LOGDIR=$baseLogDir'|" $commonConf
-		else
-			echo "LOGDIR=$baseLogDir" >> "$commonConf"
-		fi
-	else
-		echo "LOGDIR=$baseLogDir" > "$commonConf"
-	fi
 
 	# Read MonaLisa config files
 	if [[ -f "$commonConf" ]]
@@ -223,14 +216,19 @@ function start_ml(){
 		do
 		if [[ ! $line = \#* ]] && [[ ! -z $line ]]
 			then
-			key=$(echo $line| cut -d "=" -f 1 | xargs 2>/dev/null)
-			val=$(echo $line | cut -d "=" -f 2- | xargs 2>/dev/null)
-			commonConfiguration[${key^^}]=$val
+			key=$(echo "$line"| cut -d "=" -f 1 )
+			val=$(echo "$line" | cut -d "=" -f 2- ) 
+
+			key=${key^^}
+			prev=${commonConfiguration[$key]}
+			prev=${prev:+$prev$nl}
+
+			commonConfiguration[$key]=$prev$val
 		fi
 		done < "$commonConf"
 	fi
 
-	echo "===================== MonaLisa Local Config ==================="
+	echo "===================== Local Configuration ==================="
 	for x in "${!commonConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}" ; done
 	echo ""
 
@@ -253,7 +251,6 @@ function start_ml(){
 	then
 		echo "export MonaLisa_HOME=${commonConfiguration[MONALISA_HOME]};" >> $envFile
 	fi
-
 	source $envFile 
 
 	farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable or defined in version.properties file
@@ -267,6 +264,7 @@ function start_ml(){
 
 	mkdir -p $logDir || { echo "Unable to create log directory at $logDir or log directory not found in LDAP configuration" && return; }
 	echo "MonaLisa Log Directory: $logDir"
+	echo ""
 	echo "Started configuring MonaLisa..."
 	echo ""
 
@@ -293,6 +291,7 @@ function stop_ml(){
 		sleep 2
 #		kill -9 $pid &>/dev/null
 	done
+	echo "Stopped MonaLisa..."
 }
 
 function status_ml() {
