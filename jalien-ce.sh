@@ -52,6 +52,7 @@ function start_ce(){
 	hostname=$4
 	nl='
 	'
+	nl=${nl:0:1}
 
 	if check_liveness_ce
 	then
@@ -68,32 +69,30 @@ function start_ce(){
 		perl -p00e 's/\n //g' | envsubst
 	)
 
-	
-
 	declare -A siteConfiguration
 	while IFS= read -r line
 	do
-	#Ignore empty lines and create an associative array from LDAP configuration
-	if [[ ! -z $line ]]
-	then
-		key=$(echo "$line"| cut -d ":" -f 1 )
-		val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
+		#Ignore empty lines and create an associative array from LDAP configuration
+		if [[ ! -z $line ]]
+		then
+			key=$(echo "$line" | cut -d ":" -f 1 )
+			val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
 
-		key=${key^^}
-		prev=${siteConfiguration[$key]}
-		prev=${prev:+$prev$nl}
+			key=${key^^}
+			prev=${siteConfiguration[$key]}
+			prev=${prev:+$prev$nl}
 
-		siteConfiguration[$key]=$prev$val
-	fi
+			siteConfiguration[$key]=$prev$val
+		fi
 	done <<< "$siteLDAPQuery"
-	
+
 	baseLogDir=$(echo "${siteConfiguration[LOGDIR]}" | envsubst)
 	if [[ -z $baseLogDir ]]
 	then
 		baseLogDir="$HOME/ALICE/alien-logs"
 		echo "LDAP doesn't define a particular log location, using the default ($baseLogDir)"
 	fi
-	
+
 	logDir="$baseLogDir/CE"
 	commonConf="$confDir/version.properties"
 	ceEnv="$confDir/CE.env"
@@ -106,27 +105,37 @@ function start_ce(){
 
 		while IFS= read -r line
 		do
-		if [[ ! $line = \#* ]] && [[ ! -z $line ]]
-		then
-			key=$(echo "$line"| cut -d "=" -f 1 )
-			val=$(echo "$line" | cut -d "=" -f 2- ) 
+			if [[ ! $line = \#* ]] && [[ ! -z $line ]]
+			then
+				key=$(echo "$line" | cut -d "=" -f 1 )
+				val=$(echo "$line" | cut -d "=" -f 2- )
 
-			key=${key^^}
-			prev=${commonConfiguration[$key]}
-			prev=${prev:+$prev$nl}
+				key=${key^^}
+				prev=${commonConfiguration[$key]}
+				prev=${prev:+$prev$nl}
 
-			commonConfiguration[$key]=$prev$val
-		fi
+				commonConfiguration[$key]=$prev$val
+			fi
 		done < "$commonConf"
 	fi
 
-	echo "===================== Local Configuration ==================="
-	for x in "${!commonConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}" ; done
+	echo ""
+	echo "===================== Local Configuration start ==================="
+	for x in "${!commonConfiguration[@]}"
+	do
+		printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}"
+	done
+	echo "===================== Local Configuration end ==================="
 	echo ""
 
 	envFile="$logDir/CE-env.sh"
 	pidFile="$logDir/CE.pid"
-	mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return 1; }
+	
+	if ! mkdir -p $logDir
+	then
+		echo "Unable to create log directory at $logDir"
+		return 1
+	fi
 
 	# Reset the environment
 	> $envFile
@@ -140,8 +149,7 @@ function start_ce(){
 		envCommand="$envCommand/${commonConfiguration[JALIEN]}"
 	fi
 
-	$envCommand >> $envFile
-	
+	$envCommand | grep . >> $envFile || return 1
 
 	logFile="$logDir/CE-jvm-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
 

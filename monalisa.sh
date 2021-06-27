@@ -135,7 +135,8 @@ function start_ml(){
 	hostname=$4
 	nl='
 	'
-	
+	nl=${nl:0:1}
+
 	# Obtain site related configurations from LDAP
 	siteLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch" 2> /dev/null )
 	declare -A siteConfiguration
@@ -144,7 +145,7 @@ function start_ml(){
 	#Ignore empty lines and create an associative array from ldap configuration
 	if [[ ! -z $line ]]
 	then
-		key=$(echo "$line"| cut -d ":" -f 1 )
+		key=$(echo "$line" | cut -d ":" -f 1 )
 		val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
 
 		key=${key^^}
@@ -175,7 +176,7 @@ function start_ml(){
 		then
 
 		key=$(echo "$line" | cut -d ":" -f 1)
-    	val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
+    		val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
 
 		key=${key^^}
 		prev=${monalisaLDAPconfiguration[$key]}
@@ -216,7 +217,7 @@ function start_ml(){
 		do
 		if [[ ! $line = \#* ]] && [[ ! -z $line ]]
 			then
-			key=$(echo "$line"| cut -d "=" -f 1 )
+			key=$(echo "$line" | cut -d "=" -f 1 )
 			val=$(echo "$line" | cut -d "=" -f 2- ) 
 
 			key=${key^^}
@@ -228,8 +229,13 @@ function start_ml(){
 		done < "$commonConf"
 	fi
 
-	echo "===================== Local Configuration ==================="
-	for x in "${!commonConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}" ; done
+	echo ""
+	echo "===================== Local Configuration start ==================="
+	for x in "${!commonConfiguration[@]}"
+	do
+		printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}"
+	done
+	echo "===================== Local Configuration end ==================="
 	echo ""
 
 	# Reset the environment
@@ -244,7 +250,7 @@ function start_ml(){
 		envCommand="$envCommand/${commonConfiguration[MONALISA]}"
 	fi
 
-	$envCommand >> $envFile
+	$envCommand | grep . >> $envFile || return 1
 
 	# If a custom MonaLisa package is declared use that package as MonaLisa_HOME
 	if [[ -n "${commonConfiguration[MONALISA_HOME]}" ]]
@@ -262,7 +268,11 @@ function start_ml(){
 
 	# ======================== Start templating config files  ========================
 
-	mkdir -p $logDir || { echo "Unable to create log directory at $logDir or log directory not found in LDAP configuration" && return; }
+	if ! mkdir -p $logDir
+	then
+		echo "Unable to create log directory at $logDir"
+		return 1
+	fi
 	echo "MonaLisa Log Directory: $logDir"
 	echo ""
 	echo "Started configuring MonaLisa..."
@@ -289,7 +299,7 @@ function stop_ml(){
 		sleep 1 ; echo -n "."
 		kill -s TERM $pid &>/dev/null
 		sleep 2
-#		kill -9 $pid &>/dev/null
+#		# kill -9 $pid &>/dev/null
 	done
 	echo "Stopped MonaLisa..."
 }
