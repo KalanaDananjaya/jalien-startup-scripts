@@ -2,8 +2,6 @@
 
 # Starting script for VoBox
 # v0.1
-# kwijethu@cern.ch
-
 
 ldapHostname="alice-ldap.cern.ch"
 ldapPort="8389"
@@ -16,7 +14,7 @@ source $dir/monalisa.sh
 
 cmds='start status stop restart mlstatus'
 svcs='ce monalisa'
-confDir="${HOME}/.jalien"
+confDir="${HOME}/.alien/config"
 
 usage()
 {
@@ -52,7 +50,7 @@ do
 
 	elif [[ $svc = "ce" ]]
 	then
-		run_ce $cmd $confDir
+		run_ce $cmd $confDir $ldapHostname $ldapPort $hostname
     
 	else 
 		usage

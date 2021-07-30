@@ -2,7 +2,6 @@
 
 # Starting script for CE
 # v0.1
-# kwijethu@cern.ch
 
 ceClassName=alien.site.ComputingElement
 
@@ -48,37 +47,95 @@ function status_ce() {
 
 function start_ce(){
 	confDir=$1
-	
+	ldapHostname=$2
+	ldapPort=$3
+	hostname=$4
+	nl='
+	'
+	nl=${nl:0:1}
+
 	if check_liveness_ce
 	then
 		echo "JAliEn CE already running"
 		return 0
 	fi
 
-	ceConf="$confDir/CE.properties"
+	# Obtain site related configurations from LDAP
+	ldapBase="ou=Sites,o=alice,dc=cern,dc=ch"
+	ldapFilter="(&(objectClass=AliEnHostConfig)(host=$hostname))"
+
+	siteLDAPQuery=$(
+		ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b $ldapBase "$ldapFilter" |
+		perl -p00e 's/\n //g' | envsubst
+	)
+
+	declare -A siteConfiguration
+	while IFS= read -r line
+	do
+		#Ignore empty lines and create an associative array from LDAP configuration
+		if [[ ! -z $line ]]
+		then
+			key=$(echo "$line" | cut -d ":" -f 1 )
+			val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
+
+			key=${key^^}
+			prev=${siteConfiguration[$key]}
+			prev=${prev:+$prev$nl}
+
+			siteConfiguration[$key]=$prev$val
+		fi
+	done <<< "$siteLDAPQuery"
+
+	baseLogDir=$(echo "${siteConfiguration[LOGDIR]}" | envsubst)
+	if [[ -z $baseLogDir ]]
+	then
+		baseLogDir="$HOME/ALICE/alien-logs"
+		echo "LDAP doesn't define a particular log location, using the default ($baseLogDir)"
+	fi
+
+	logDir="$baseLogDir/CE"
+	commonConf="$confDir/version.properties"
 	ceEnv="$confDir/CE.env"
 	envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
 
 	# Read JAliEn config files
-	if [[ -f "$ceConf" ]]
+	if [[ -f "$commonConf" ]]
 	then
-		declare -A jalienConfiguration
+		declare -A commonConfiguration
 
 		while IFS= read -r line
 		do
-		if [[ ! $line = \#* ]] && [[ ! -z $line ]]
-		then
-			key=$(echo $line | cut -d "=" -f 1  | xargs)
-			val=$(echo $line | cut -d "=" -f 2- | xargs)
-			jalienConfiguration[${key^^}]=$val
-		fi
-		done < "$ceConf"
+			if [[ ! $line = \#* ]] && [[ ! -z $line ]]
+			then
+				key=$(echo "$line" | cut -d "=" -f 1 )
+				val=$(echo "$line" | cut -d "=" -f 2- )
+
+				key=${key^^}
+				prev=${commonConfiguration[$key]}
+				prev=${prev:+$prev$nl}
+
+				commonConfiguration[$key]=$prev$val
+			fi
+		done < "$commonConf"
 	fi
 
-	logDir=${jalienConfiguration[LOGDIR]-"${HOME}/ALICE/alien-logs"}/CE
+	echo ""
+	echo "===================== Local Configuration start ==================="
+	for x in "${!commonConfiguration[@]}"
+	do
+		printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}"
+	done
+	echo "===================== Local Configuration end ==================="
+	echo ""
+
 	envFile="$logDir/CE-env.sh"
 	pidFile="$logDir/CE.pid"
-	mkdir -p $logDir || { echo "Unable to create log directory at $logDir" && return 1; }
+	
+	if ! mkdir -p $logDir
+	then
+		echo "Unable to create log directory at $logDir"
+		return 1
+	fi
 
 	# Reset the environment
 	> $envFile
@@ -87,19 +144,19 @@ function start_ce(){
 	[[ -f "$ceEnv" ]] && cat "$ceEnv" >> $envFile
 
 	# Check for JAliEn version
-	if [[ -n "${jalienConfiguration[JALIEN]}" ]]
+	if [[ -n "${commonConfiguration[JALIEN]}" ]]
 	then
-		envCommand="$envCommand/${jalienConfiguration[JALIEN]}"
+		envCommand="$envCommand/${commonConfiguration[JALIEN]}"
 	fi
 
-	$envCommand >> $envFile
-	source $envFile
+	$envCommand | grep . >> $envFile || return 1
 
 	logFile="$logDir/CE-jvm-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
 
 	echo -e "Starting JAliEn CE...  JVM log:\n$logFile"
 	(
 		# In a subshell, to get the process detached from the parent
+		source $envFile
 		cd $logDir
 		nohup jalien $ceClassName > "$logFile" 2>&1 < /dev/null &
 		echo $! > "$pidFile"
@@ -111,11 +168,14 @@ function start_ce(){
 
 function run_ce() {
 	command=$1
-	confDir=$2
 
 	if [[ $command = "start" ]]
 	then
-		start_ce $confDir
+		confDir=$2
+		ldapHostname=$3
+		ldapPort=$4
+		hostname=$5
+		start_ce $confDir $ldapHostname $ldapPort $hostname
 
 	elif [[ $command = "stop" ]]
 	then
@@ -124,7 +184,7 @@ function run_ce() {
 	elif [[ $command = "restart" ]]
 	then
 		stop_ce
-		start_ce $confDir
+		start_ce $confDir $ldapHostname $ldapPort $hostname
 
 	elif [[ $command =~ "status" ]]
 	then
