@@ -5,6 +5,22 @@
 
 ceClassName=alien.site.ComputingElement
 
+##############################################
+# Write log to file
+# Globals:
+#   setupLogFile: Log file for MonaLisa setup
+# Arguments:
+#   $1: String to log
+###############################################
+function write_log(){
+	echo $1 >> $setupLogFile
+}
+
+#############################################################################################
+# Stop CE
+# Globals:
+#	ceClassName : Computing Element classname
+#############################################################################################
 function stop_ce() {
 	echo "Stopping JAliEn CE..."
 	pkill -TERM -f $ceClassName
@@ -18,6 +34,11 @@ function stop_ce() {
 	! status_ce
 }
 
+#############################################################################################
+# CE liveness check
+# Returns:
+#   0 if process is running,else 1
+#############################################################################################
 function check_liveness_ce(){
 	if ps uxwww | grep "[ ]$ceClassName" > /dev/null
 	then
@@ -27,15 +48,22 @@ function check_liveness_ce(){
 	fi
 }
 
+###################################
+# Check CE status
+# Arguments:
+#   $command: "status" or "mlstatus"
+# Returns: 
+#	0 if process is running,else 1
+###################################
 function status_ce() {
-	cmd=$1
+	command=$1
 
 	check_liveness_ce
 	exit_code=$?
 
 	[[ $exit_code == 0 ]] && not= || not=' Not'
 
-	if [[ "$cmd" == mlstatus ]]
+	if [[ "$command" == mlstatus ]]
 	then
 		echo -e "Status\t$exit_code\tMessage\tCE$not Running"
 	else
@@ -45,6 +73,17 @@ function status_ce() {
 	return $exit_code
 }
 
+#############################################################################################
+# Start MonaLisa
+# Globals:
+#	siteConfiguration: Associative array of site configuration parameters in LDAP
+#   commonConfiguration: Associative array of JAliEn local configuration parameters
+# Arguments:
+#   confDir: AliEn configuration directory
+#	ldapHostname: LDAP hostname
+#	ldapPort: LDAP port
+#	hostname: Site hostname
+#############################################################################################
 function start_ce(){
 	confDir=$1
 	ldapHostname=$2
@@ -94,9 +133,12 @@ function start_ce(){
 	fi
 
 	logDir="$baseLogDir/CE"
+	setupLogFile="$logDir/CE-config-inputs.txt"
 	commonConf="$confDir/version.properties"
 	ceEnv="$confDir/CE.env"
 	envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv JAliEn"
+
+	> $setupLogFile
 
 	# Read JAliEn config files
 	if [[ -f "$commonConf" ]]
@@ -119,14 +161,14 @@ function start_ce(){
 		done < "$commonConf"
 	fi
 
-	echo ""
-	echo "===================== Local Configuration start ==================="
+	write_log ""
+	write_log "===================== Local Configuration start ==================="
 	for x in "${!commonConfiguration[@]}"
 	do
-		printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}"
+		printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}" >> $setupLogFile
 	done
-	echo "===================== Local Configuration end ==================="
-	echo ""
+	write_log "===================== Local Configuration end ==================="
+	write_log ""
 
 	envFile="$logDir/CE-env.sh"
 	pidFile="$logDir/CE.pid"
@@ -153,7 +195,7 @@ function start_ce(){
 
 	logFile="$logDir/CE-jvm-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
 
-	echo -e "Starting JAliEn CE...  JVM log:\n$logFile"
+	echo -e "Starting JAliEn CE...\nJVM log:$logFile"
 	(
 		# In a subshell, to get the process detached from the parent
 		source $envFile

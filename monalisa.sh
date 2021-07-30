@@ -3,55 +3,87 @@
 # Starting script for MonaLisa
 # v0.1
 
+##############################################
+# Write log to file
+# Globals:
+#   setupLogFile: Log file for MonaLisa setup
+# Arguments:
+#   $1: String to log
+###############################################
+function write_log(){
+	echo $1 >> $setupLogFile
+}
+
+####################################################################################
+# Templates a given configuration files(Add, delete or change content)
+# Globals:
+#   add: Array of lines to add to file
+#	rmv: Array of lines to be removed from file
+#	changes: Associative array of line to be changed {original_text:change_to_text}
+# Arguments:
+#   srcFile: Source file
+#	destFile: Destination file
+####################################################################################
 function template(){
 
 	srcFile=$1
 	destFile=$2
 
-	echo "=========== Templating the File ==========="
-	echo "+ Source File: $srcFile"
-	echo "+ Destination File: $destFile"
-	echo ""
+	write_log "=========== Templating the File ==========="
+	write_log "+ Source File: $srcFile"
+	write_log "+ Destination File: $destFile"
+	write_log ""
 
 	# Create backup of the original file if it exists
 	[ -f $destFile ] && cp -f $destFile "$destFile.orig"
 	cp $srcFile $destFile
 
 	# Apply lines changes
-	echo ">>> Applying Changes"
+	write_log ">>> Applying Changes"
 	for key in "${!changes[@]}"
 	do
 		# Find partial matches and replace
-		echo "Change key: $key to value: ${changes[$key]}"
+		write_log "Change key: $key to value: ${changes[$key]}"
 		sed -i "s|$key|${changes[$key]}|" $destFile
 	done
-	unset changes && echo ""
+	unset changes && write_log ""
   
 	# Append new Lines
-	echo ">>> Adding new lines"
+	write_log ">>> Adding new lines"
 	for i in "${add[@]}"
 	do
-		echo "+++ $i"
+		write_log "+++ $i"
 		echo "$i" >> $destFile
 	done
-	unset add && echo ""
+	unset add && write_log ""
 
 	# Remove existing lines
-	echo ">>> Removing existing lines"
+	write_log ">>> Removing existing lines"
 	for i in "${rmv[@]}"
 	do
 	# Find exact word matches and delete the line
-	echo "--- $i"
+	write_log "--- $i"
 	sed -i "/$i\b/d" $destFile
 	done
-	unset rmv && echo ""
+	unset rmv && write_log ""
 
-	echo " --- Templating Complete ---"
-	echo ""
+	write_log " --- Templating Complete ---"
+	write_log ""
   
 }
 
+#############################################################################################
+# Setup MonaLisa
+# Globals:
+#   monalisaLDAPconfiguration: Associative array of MonaLisa configuration parameters in LDAP
+#	baseLogDir: MonaLisa Log file. Defaults to ~/ALICE/alien-logs
+#	ceLogFile: CE Log File
+# Arguments:
+#   farmHome: MonaLisa base package location
+#	logDir: MonaLisa log directory
+#############################################################################################
 function setup() {
+
 	farmHome=$1
 	logDir=$2
 
@@ -67,7 +99,7 @@ function setup() {
 
 	# Convert multi-valued attribute to array
 	while IFS= read -r line ; do add+=($line); done <<< "${siteConfiguration[MONALISA_ADDMODULES_LIST]}"
-	add+=("^monLogTail{Cluster=AliEnServicesLogs,Node=CE,command=tail -n 15 -F $baseLogDir/CE/alien.log 2>&1}%3")
+	add+=("^monLogTail{Cluster=AliEnServicesLogs,Node=CE,command=tail -n 15 -F $ceLogFile 2>&1}%3")
 	add+=("*AliEnServicesStatus{monStatusCmd, localhost, \"logDir=$baseLogDir $(cd `dirname -- "$0"` &>/dev/null && pwd)/jalien-vobox.sh mlstatus ce,timeout=800\"}%900")
 
 	template "$farmHome/Service/myFarm/myFarm.conf" "$logDir/myFarm/myFarm.conf"
@@ -84,11 +116,13 @@ function setup() {
 	country=${monalisaLDAPconfiguration[COUNTRY]-${monalisaLDAPconfiguration[SITE_COUNTRY]}} || ""
 	long=${monalisaLDAPconfiguration[LONGITUDE]-${monalisaLDAPconfiguration[SITE_LONGITUDE]}} || "N/A"
 	lat=${monalisaLDAPconfiguration[LATITUDE]-${monalisaLDAPconfiguration[SITE_LATITUDE]}} || "N/A"
+	admin=${monalisaLDAPconfiguration[ADMINISTRATOR]-${monalisaLDAPconfiguration[SITE_ADMINISTRATOR]}} || "N/A"
 
 	changes["^MonaLisa.Location.*"]="MonaLisa.Location=$location"
 	changes["^MonaLisa.Country.*"]="MonaLisa.Country=$country"
 	changes["^MonaLisa.LAT.*"]="MonaLisa.LAT=$lat"
 	changes["^MonaLisa.LONG.*"]="MonaLisa.LONG=$long"
+	changes["^MonaLisa.ContactEmail.*"]="MonaLisa.ContactEmail=$admin"
 
 	template "$farmHome/Service/myFarm/ml.properties" "$logDir/myFarm/ml.properties"
 
@@ -106,11 +140,17 @@ function setup() {
 	# ============================= Export variables =====================================
 	export CONFDIR="$logDir/myFarm"
 	export ALICE_LOGDIR=$baseLogDir
-	export JAVAOPTS=${monalisaLDAPconfiguration[JAVAOPTS]}
+	export JAVA_OPTS=${monalisaLDAPconfiguration[JAVAOPTS]}
 	# ===================================================================================
 }
 
+#####################################
+# MonaLisa liveness check
+# Returns:
+#   0 if process is running,else 1
+#####################################
 function check_liveness_ml(){
+	
 	pid=$(pgrep -n -u `id -u` -f -- "-DMonaLisa_HOME=")
 	if [[ -z $pid ]]
 	then
@@ -120,7 +160,20 @@ function check_liveness_ml(){
 	fi
 }
 
+#############################################################################################
+# Start MonaLisa
+# Globals:
+#	siteConfiguration: Associative array of site configuration parameters in LDAP
+#	monalisaLDAPconfiguration: Associative array of MonaLisa configuration parameters in LDAP
+#   commonConfiguration: Associative array of JAliEn local configuration parameters
+# Arguments:
+#   confDir: AliEn configuration directory
+#	ldapHostname: LDAP hostname
+#	ldapPort: LDAP port
+#	hostname: Site hostname
+#############################################################################################
 function start_ml(){
+
 	# Check if there is an existing instance
 	check_liveness_ml
 	if [[ $? == 0 ]]
@@ -140,6 +193,7 @@ function start_ml(){
 	# Obtain site related configurations from LDAP
 	siteLDAPQuery=$(ldapsearch -x -LLL -h $ldapHostname -p $ldapPort -b "host=$hostname,ou=Config,ou=CERN,ou=Sites,o=alice,dc=cern,dc=ch" 2> /dev/null )
 	declare -A siteConfiguration
+
 	while IFS= read -r line
 	do
 	#Ignore empty lines and create an associative array from ldap configuration
@@ -170,13 +224,14 @@ function start_ml(){
         )
 
 	declare -A monalisaLDAPconfiguration
+
 	while IFS= read -r line
 	do
 	if [[ ! -z $line ]]
 		then
 
 		key=$(echo "$line" | cut -d ":" -f 1)
-    		val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
+    	val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
 
 		key=${key^^}
 		prev=${monalisaLDAPconfiguration[$key]}
@@ -185,16 +240,9 @@ function start_ml(){
 		monalisaLDAPconfiguration[$key]=$prev$val
 	fi
 	done <<< "$monalisaLDAPQuery"
-
-	echo "===================== Base Config ==================="
-	for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" ; done
-	echo ""
-
-	echo "===================== MonaLisa Config ==================="
-	for x in "${!monalisaLDAPconfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaLDAPconfiguration[$x]}" ; done
-	echo ""
 	
 	baseLogDir=$(echo "${siteConfiguration[LOGDIR]}" | envsubst)
+
 	if [[ -z $baseLogDir ]]
 	then
 		baseLogDir="$HOME/ALICE/alien-logs"
@@ -202,17 +250,29 @@ function start_ml(){
 	fi
 
 	logDir="$baseLogDir/MonaLisa"
+	setupLogFile="$logDir/ML-config-inputs.txt"
+	ceLogFile="$baseLogDir/CE.log.0"
 	envFile="$logDir/ml-env.sh"
 	commonConf="$confDir/version.properties"
 	mlEnv="$confDir/ml.env"
 	envCommand="/cvmfs/alice.cern.ch/bin/alienv printenv MonaLisa"
-	logFile="$logDir/ml-$(date '+%y%m%d-%H%M%S')-$$-log.txt"
+
+	> $setupLogFile
+
+	write_log "========== VObox Config =========="
+	for x in "${!siteConfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${siteConfiguration[$x]}" >> $setupLogFile ; done
+	write_log "" 
+
+	write_log "========== MonaLisa Config ==========" 
+	for x in "${!monalisaLDAPconfiguration[@]}"; do printf "[%s]=%s\n" "$x" "${monalisaLDAPconfiguration[$x]}" >> $setupLogFile ; done
+	write_log ""
 
 
 	# Read MonaLisa config files
 	if [[ -f "$commonConf" ]]
 	then
 		declare -A commonConfiguration
+
 		while IFS= read -r line
 		do
 		if [[ ! $line = \#* ]] && [[ ! -z $line ]]
@@ -229,14 +289,14 @@ function start_ml(){
 		done < "$commonConf"
 	fi
 
-	echo ""
-	echo "===================== Local Configuration start ==================="
+	write_log ""
+	write_log "========== Local Configuration start =========="
 	for x in "${!commonConfiguration[@]}"
 	do
-		printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}"
+		printf "[%s]=%s\n" "$x" "${commonConfiguration[$x]}" >> $setupLogFile
 	done
-	echo "===================== Local Configuration end ==================="
-	echo ""
+	write_log "========== Local Configuration end =========="
+	write_log ""
 
 	# Reset the environment
 	> $envFile
@@ -244,18 +304,18 @@ function start_ml(){
 	# Bootstrap the environment e.g. with the correct X509_USER_PROXY
 	[[ -f "$mlEnv" ]] && cat "$mlEnv" >> $envFile
 
-	# If a specific MonaLisa package is declared use that package 
-	if [[ -n "${commonConfiguration[MONALISA]}" ]]
-	then
-		envCommand="$envCommand/${commonConfiguration[MONALISA]}"
-	fi
-
-	$envCommand | grep . >> $envFile || return 1
-
-	# If a custom MonaLisa package is declared use that package as MonaLisa_HOME
+	# If a custom MonaLisa package is declared, use that package as MonaLisa_HOME
 	if [[ -n "${commonConfiguration[MONALISA_HOME]}" ]]
 	then
 		echo "export MonaLisa_HOME=${commonConfiguration[MONALISA_HOME]};" >> $envFile
+	else
+		# If a specific MonaLisa package is declared, use that package 
+		if [[ -n "${commonConfiguration[MONALISA]}" ]]
+		then
+			envCommand="$envCommand/${commonConfiguration[MONALISA]}"
+		fi
+
+		$envCommand | grep . >> $envFile || exit 1
 	fi
 	source $envFile 
 
@@ -263,7 +323,8 @@ function start_ml(){
 
 	if [[ -z $farmHome ]]
 	then
-		echo "Please point MonaLisa variable to the MonaLisa package location by setting the environment variable MonaLisa_HOME" && exit 1
+		echo "Please point MonaLisa variable to the MonaLisa package location by setting the environment variable MonaLisa_HOME"
+		exit 1
 	fi
 
 	# ======================== Start templating config files  ========================
@@ -280,16 +341,21 @@ function start_ml(){
 
 	setup $farmHome $logDir
 
-	echo "Starting MonaLisa.... Please check $logFile for logs"
+	echo "Starting MonaLisa...."
 	(
-		# In a subshell, to get the process detached from the parent
+		# In a subshell, to ensure the process will be detached from the parent
 		cd $logDir
-		$farmHome/Service/CMD/ML_SER start > "$logFile" 2>&1 < /dev/null &
+		$farmHome/Service/CMD/ML_SER start < /dev/null
 	)
 }
 
+###################
+# Stop MonaLisa
+###################
 function stop_ml(){
+
 	echo "Stopping MonaLisa..."
+	
 	for pid in $(pgrep -u `id -u` -f -- '-DMonaLisa_HOME=')
 	do
 		# request children to shutdown
@@ -299,20 +365,27 @@ function stop_ml(){
 		sleep 1 ; echo -n "."
 		kill -s TERM $pid &>/dev/null
 		sleep 2
-#		# kill -9 $pid &>/dev/null
 	done
+
 	echo "Stopped MonaLisa..."
 }
 
+###################################
+# Check MonaLisa status
+# Arguments:
+#   $command: "status" or "mlstatus"
+# Returns: 
+#	0 if process is running,else 1
+###################################
 function status_ml() {
-	cmd=$1
+	command=$1
 
 	check_liveness_ml
 	exit_code=$?
 
 	[[ $exit_code == 0 ]] && not= || not=' Not'
 
-	if [[ "$cmd" == mlstatus ]]
+	if [[ "$command" == mlstatus ]]
 	then
 		echo -e "Status\t$exit_code\tMessage\tMonaLisa$not Running"
 	else
@@ -341,7 +414,7 @@ function run_monalisa() {
 		stop_ml
 		start_ml $confDir $ldapHostname $ldapPort $hostname
 
-	elif [[ $command =~ "mlstatus" ]]
+	elif [[ $command =~ "status" ]]
 	then
 		status_ml $command
 
