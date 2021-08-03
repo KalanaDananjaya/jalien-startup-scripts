@@ -231,7 +231,7 @@ function start_ml(){
 		then
 
 		key=$(echo "$line" | cut -d ":" -f 1)
-    	val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
+		val=$(echo "$line" | cut -d ":" -f 2- | sed s/.//)
 
 		key=${key^^}
 		prev=${monalisaLDAPconfiguration[$key]}
@@ -315,7 +315,17 @@ function start_ml(){
 			envCommand="$envCommand/${commonConfiguration[MONALISA]}"
 		fi
 
-		$envCommand | grep . >> $envFile || exit 1
+		envCommandStdErr=$($envCommand 2>&1)
+		# If envCommand fails(MonaLisa not avaialable in CVMFS), pull MonaLisa package from external source
+		if [[ -z $envCommandStdErr ]]
+		then
+			$envCommand | grep . >> $envFile || exit 1
+		else
+			mlPackageName="MonaLisa-20210506"
+			wget -q "http://alimonitor.cern.ch/download/MonaLisa/$mlPackageName.tar.gz"
+			tar -xf "$mlPackageName.tar.gz" -C $HOME
+			echo "export MonaLisa_HOME=$HOME/$mlPackageName;" >> $envFile
+		fi
 	fi
 	source $envFile 
 
