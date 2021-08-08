@@ -3,7 +3,7 @@
 # JAliEn Startup Scripts
 # v1.0
 # Authors: Kalana Dananjaya, Maarten Litmaath, Costin Grigoras(kwijethu@cern.ch,Maarten.Litmaath@cern.ch,Costin.Grigoras@cern.ch)
-# 2021-08-03
+# 2021-08-08
 
 ldapHostname="alice-ldap.cern.ch"
 ldapPort="8389"

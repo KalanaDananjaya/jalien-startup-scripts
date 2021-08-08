@@ -3,7 +3,7 @@
 # JAliEn Startup Scripts - MonaLisa
 # v1.0
 # Authors: Kalana Dananjaya, Maarten Litmaath, Costin Grigoras(kwijethu@cern.ch,Maarten.Litmaath@cern.ch,Costin.Grigoras@cern.ch)
-# 2021-08-03
+# 2021-08-08
 
 ##############################################
 # Write log to file
@@ -252,6 +252,13 @@ function start_ml(){
 	fi
 
 	logDir="$baseLogDir/MonaLisa"
+
+	if ! mkdir -p $logDir
+	then
+		echo "Unable to create log directory at $logDir"
+		return 1
+	fi
+
 	setupLogFile="$logDir/ML-config-inputs.txt"
 	ceLogFile="$baseLogDir/CE.log.0"
 	envFile="$logDir/ml-env.sh"
@@ -309,6 +316,27 @@ function start_ml(){
 	# If a custom MonaLisa package is declared, use that package as MonaLisa_HOME
 	if [[ -n "${commonConfiguration[MONALISA_HOME]}" ]]
 	then
+		d=${commonConfiguration[MONALISA_HOME]}
+
+		if ! [[ "$d" =~ / ]]
+		then
+			d=${d/MonaLisa-}
+
+			[[ "$d" =~ [0-9] ]] || d=20210506
+
+			d=MonaLisa-$d
+			f=$d.tar.gz
+
+			echo "Downloading MonaLisa tar ball into $HOME/$f"
+
+			curl -s -S -o "$HOME/$f" "http://alimonitor.cern.ch/download/MonaLisa/$f" &&
+			tar -xf "$HOME/$f" -C $HOME &&
+
+			perl -i.$$ -pe "s|^\s*(MONALISA_HOME)\s*=.*|\$1=$HOME/$d|i" "$commonConf" || exit 1
+
+			commonConfiguration[MONALISA_HOME]=$HOME/$d
+		fi
+
 		echo "export MonaLisa_HOME=${commonConfiguration[MONALISA_HOME]};" >> $envFile
 	else
 		# If a specific MonaLisa package is declared, use that package 
@@ -317,18 +345,9 @@ function start_ml(){
 			envCommand="$envCommand/${commonConfiguration[MONALISA]}"
 		fi
 
-		envCommandStdErr=$($envCommand 2>&1)
-		# If envCommand fails(MonaLisa not avaialable in CVMFS), pull MonaLisa package from external source
-		if [[ -z $envCommandStdErr ]]
-		then
-			$envCommand | grep . >> $envFile || exit 1
-		else
-			mlPackageName="MonaLisa-20210506"
-			wget -q "http://alimonitor.cern.ch/download/MonaLisa/$mlPackageName.tar.gz"
-			tar -xf "$mlPackageName.tar.gz" -C $HOME
-			echo "export MonaLisa_HOME=$HOME/$mlPackageName;" >> $envFile
-		fi
+		$envCommand | grep ^ >> $envFile || exit 1
 	fi
+
 	source $envFile 
 
 	farmHome=${MonaLisa_HOME} # MonaLisa package location should be defined as an environment variable or defined in version.properties file
@@ -341,11 +360,6 @@ function start_ml(){
 
 	# ======================== Start templating config files  ========================
 
-	if ! mkdir -p $logDir
-	then
-		echo "Unable to create log directory at $logDir"
-		return 1
-	fi
 	echo "MonaLisa Log Directory: $logDir"
 	echo ""
 	echo "Started configuring MonaLisa..."
